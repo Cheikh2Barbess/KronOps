@@ -23,7 +23,7 @@ jobs:
       DB_HOST: localhost
       DB_NAME: kronops
       DB_USER: kronops_owner
-      DB_PASSWORD: ci-owner
+      DB_PASSWORD: ciowner123
       DB_APP_ROLE: kronops_app
     steps:
       - uses: actions/checkout@v4
@@ -36,9 +36,9 @@ jobs:
           PGHOST: localhost
           POSTGRES_USER: postgres
           DB_OWNER_USER: kronops_owner
-          DB_OWNER_PASSWORD: ci-owner
+          DB_OWNER_PASSWORD: ciowner123
           DB_APP_USER: kronops_app
-          DB_APP_PASSWORD: ci-app
+          DB_APP_PASSWORD: ciapp123
         run: sh docker/postgres-init.sh
       - run: pip install -r backend/requirements-dev.txt
       - name: Verifier qu'aucune migration n'est oubliee

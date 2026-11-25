@@ -40,7 +40,7 @@ cp .env.example .env
 ```
 
 Sur Windows PowerShell, la commande est `copy .env.example .env`.
-Ouvre ensuite le fichier `.env` avec un éditeur de texte et remplace chaque `change-moi...` par un mot de passe de ton choix. Ce fichier reste sur ton ordinateur : il n'est jamais envoyé sur GitHub.
+Ouvre ensuite le fichier `.env` avec un éditeur de texte (sur Windows : `notepad .env`) et remplace chaque `change-moi...` par un mot de passe de ton choix. **Ne change pas les noms d'utilisateur, et utilise uniquement des lettres et des chiffres dans les mots de passe.** Ce fichier reste sur ton ordinateur : il n'est jamais envoyé sur GitHub.
 
 ### 4. Démarrer
 
@@ -79,6 +79,8 @@ Tu dois voir `27 passed` à la fin. **Si un test échoue après une modification
 | `Cannot connect to the Docker daemon` | Docker Desktop n'est pas lancé | Ouvre Docker Desktop et attends « running » |
 | `port is already allocated` ou `address already in use` | Un autre programme utilise le port 5432, 8000 ou 3000 | Ferme cet autre programme (souvent un PostgreSQL déjà installé) |
 | `Variable d'environnement manquante` | Le fichier `.env` n'existe pas ou est incomplet | Refais l'étape 3 |
+| `ERREUR DE CONFIGURATION (fichier .env)` | Un nom a été modifié ou un mot de passe contient autre chose que des lettres et des chiffres | Corrige `.env` comme indiqué, puis `docker compose down -v` et `docker compose up --build` |
+| `role ... already exists`, `database "kronops" does not exist` ou `password authentication failed` en boucle | La base a été créée avec une ancienne version de `.env` | `docker compose down -v` puis `docker compose up --build` |
 | La page affiche « Service : injoignable » | L'API n'a pas fini de démarrer | Attends 30 secondes et recharge la page |
 | Tout est cassé et tu veux repartir de zéro | | `docker compose down -v` puis `docker compose up --build`. **Attention : efface toutes les données locales.** |
 
