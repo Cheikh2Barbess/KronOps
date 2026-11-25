@@ -1,0 +1,63 @@
+name: Tests
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 3s --health-timeout 3s --health-retries 20
+    env:
+      DJANGO_DEBUG: "1"
+      DJANGO_SECRET_KEY: ci-only-not-secret
+      DB_HOST: localhost
+      DB_NAME: kronops
+      DB_USER: kronops_owner
+      DB_PASSWORD: ci-owner
+      DB_APP_ROLE: kronops_app
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Creer les roles PostgreSQL (comme docker/postgres-init.sh)
+        env:
+          PGPASSWORD: postgres
+          PGHOST: localhost
+          POSTGRES_USER: postgres
+          DB_OWNER_USER: kronops_owner
+          DB_OWNER_PASSWORD: ci-owner
+          DB_APP_USER: kronops_app
+          DB_APP_PASSWORD: ci-app
+        run: sh docker/postgres-init.sh
+      - run: pip install -r backend/requirements-dev.txt
+      - name: Verifier qu'aucune migration n'est oubliee
+        working-directory: backend
+        run: python manage.py makemigrations --check --dry-run
+      - name: Tests
+        working-directory: backend
+        run: python -m pytest
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run build
