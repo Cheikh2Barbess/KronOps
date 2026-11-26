@@ -3,7 +3,8 @@
 Regles du PRD (matrice des droits, cycle de vie du lot, tests obligatoires) :
 - l'action n'est executee qu'apres la validation d'un 2e utilisateur, d'un role different du demandeur ;
 - un utilisateur ne valide jamais sa propre demande ;
-- deblocage et destruction : demandes par la Qualite (cycle de vie), le lot doit etre bloque ;
+- deblocage et destruction : demandes par la Qualite (cycle de vie) ou l'Admin, le lot doit etre bloque ;
+- un deblocage demande par l'Admin est valide par la Qualite (decision du proprietaire du 26/11) ;
 - rebut : Qualite, Production ou Operateur ; ajustement : Qualite ou Production ;
 - validateurs : Admin, Qualite, Production.
 """
@@ -114,10 +115,53 @@ def test_admin_can_validate(c, tenant_a, blocked_lot):
     assert lot_state(tenant_a, blocked_lot)[0] == "disponible"
 
 
-def test_only_quality_requests_release_or_destruction(c, blocked_lot):
-    for role in ("production", "operateur", "admin"):
+def test_only_quality_or_admin_requests_release_or_destruction(c, blocked_lot):
+    for role in ("production", "operateur"):
         assert ask(c[role], "release", blocked_lot).status_code == 403, role
         assert ask(c[role], "destroy", blocked_lot).status_code == 403, role
+
+
+# Regle du proprietaire (26/11) : le patron ne revient jamais sur une decision prise et ne debloque
+# jamais seul contre l'avis de la Qualite. Il peut rebloquer a tout moment et faire une nouvelle demande.
+
+
+def test_admin_release_request_must_be_validated_by_quality(c, tenant_a, blocked_lot):
+    request_id = ask(c["admin"], "release", blocked_lot).json()["id"]
+    r = c["production"].post(f"{URL}{request_id}/approve/", {}, format="json")
+    assert r.status_code == 400
+    assert "Qualité" in str(r.json())
+    assert lot_state(tenant_a, blocked_lot)[0] == "bloque"
+    assert c["qualite"].post(f"{URL}{request_id}/approve/", {}, format="json").status_code == 200
+    assert lot_state(tenant_a, blocked_lot)[0] == "disponible"
+
+
+def test_admin_can_request_every_action(c, tenant_a, lot):
+    request_id = ask(c["admin"], "scrap", lot, quantity="5").json()["id"]
+    assert c["production"].post(f"{URL}{request_id}/approve/", {}, format="json").status_code == 200
+    assert lot_state(tenant_a, lot)[1] == 95
+    assert ask(c["admin"], "adjust", lot, quantity="-1").status_code == 201
+
+
+def test_a_decision_is_final_even_for_admin(c, tenant_a, blocked_lot):
+    rejected = ask(c["qualite"], "release", blocked_lot).json()["id"]
+    c["production"].post(f"{URL}{rejected}/reject/", {"reason_code": "verification_en_cours"}, format="json")
+    for verb, body in (("approve", {}), ("reject", {"reason_code": "autre", "comment": "x"}), ("cancel", {})):
+        assert c["admin"].post(f"{URL}{rejected}/{verb}/", body, format="json").status_code in (400, 403), verb
+    assert lot_state(tenant_a, blocked_lot)[0] == "bloque"
+    # Pas de route pour modifier ou supprimer une demande deja tranchee.
+    assert c["admin"].patch(f"{URL}{rejected}/", {"status": "approved"}, format="json").status_code == 405
+    assert c["admin"].delete(f"{URL}{rejected}/").status_code == 405
+
+
+def test_admin_reblocks_a_released_lot_at_any_time(c, tenant_a, blocked_lot):
+    request_id = ask(c["qualite"], "release", blocked_lot).json()["id"]
+    c["production"].post(f"{URL}{request_id}/approve/", {}, format="json")
+    assert lot_state(tenant_a, blocked_lot)[0] == "disponible"
+    r = c["admin"].post(f"/api/v1/lots/{blocked_lot.id}/block/", {"reason_code": "analyse_non_conforme"}, format="json")
+    assert r.status_code == 200, r.json()
+    assert lot_state(tenant_a, blocked_lot)[0] == "bloque"
+    # La decision de deblocage reste dans l'historique, intacte.
+    assert c["admin"].get(f"{URL}{request_id}/").json()["status"] == "approved"
 
 
 def test_release_needs_a_blocked_lot(c, lot):

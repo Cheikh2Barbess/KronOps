@@ -273,11 +273,13 @@ def link_lots(*, tenant_id, user, parent, child):
 
 A = ApprovalRequest.Action
 R = User.Role
+# L'Admin (le patron) peut faire toute demande, mais elle repasse en double validation comme les autres.
+# Il ne revient jamais sur une decision prise : on corrige par une nouvelle action tracee (decision du 26/11).
 CAN_REQUEST = {
-    A.RELEASE: {R.QUALITE},
-    A.DESTROY: {R.QUALITE},
-    A.SCRAP: {R.QUALITE, R.PRODUCTION, R.OPERATEUR},
-    A.ADJUST: {R.QUALITE, R.PRODUCTION},
+    A.RELEASE: {R.QUALITE, R.ADMIN},
+    A.DESTROY: {R.QUALITE, R.ADMIN},
+    A.SCRAP: {R.QUALITE, R.PRODUCTION, R.OPERATEUR, R.ADMIN},
+    A.ADJUST: {R.QUALITE, R.PRODUCTION, R.ADMIN},
 }
 CAN_VALIDATE = {R.ADMIN, R.QUALITE, R.PRODUCTION}
 
@@ -348,6 +350,9 @@ def _check_validator(req, user):
         raise ValidationError({"request": ["Vous ne pouvez pas valider votre propre demande."]})
     if req.requested_role == user.role:
         raise ValidationError({"request": ["La validation doit venir d'un utilisateur d'un autre rôle que le demandeur."]})
+    # Un lot ne se debloque jamais sans l'accord de la Qualite, qu'elle demande ou qu'elle valide.
+    if req.action == A.RELEASE and R.QUALITE not in (req.requested_role, user.role):
+        raise ValidationError({"request": ["Un déblocage demandé hors Qualité doit être validé par la Qualité."]})
 
 
 def _decide(req, user, status, code="", comment=""):

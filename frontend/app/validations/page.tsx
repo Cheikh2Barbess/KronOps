@@ -54,10 +54,10 @@ const ROLES: Record<string, string> = {
 };
 // Matrice des droits du PRD (rappel a l'ecran, l'API reste juge).
 const CAN_REQUEST: Record<string, string[]> = {
-  release: ["qualite"],
-  destroy: ["qualite"],
-  scrap: ["qualite", "production", "operateur"],
-  adjust: ["qualite", "production"],
+  release: ["qualite", "admin"],
+  destroy: ["qualite", "admin"],
+  scrap: ["qualite", "production", "operateur", "admin"],
+  adjust: ["qualite", "production", "admin"],
 };
 const CAN_VALIDATE = ["admin", "qualite", "production"];
 const CAN_BLOCK = ["admin", "qualite", "production"];
@@ -141,7 +141,7 @@ function LotPanel({ lot, me, reasons, onChanged }: { lot: Lot; me: Me; reasons: 
           action, lot: lot.id, reason_code: form.get("reason_code"), comment: form.get("comment") || "", quantity: quantity || null,
         }),
       });
-      onChanged(`Demande « ${ACTIONS[action]} » envoyée. Elle attend la validation d'une personne d'un autre rôle.`);
+      onChanged(`Demande « ${ACTIONS[action]} » envoyée. ${action === "release" && me.role !== "qualite" ? "Elle attend la validation de la Qualité." : "Elle attend la validation d'une personne d'un autre rôle."}`);
     } catch (e) {
       setError(errorText(e));
     }
@@ -231,7 +231,9 @@ function ApprovalRow({ a, me, reasons, onChanged }: { a: Approval; me: Me; reaso
   const [error, setError] = useState<string | null>(null);
   const [rejecting, setRejecting] = useState(false);
   const mine = a.requested_by_username === me.username;
-  const canDecide = a.status === "pending" && !mine && CAN_VALIDATE.includes(me.role) && a.requested_role !== me.role;
+  // Un deblocage exige l'accord de la Qualite : si elle n'a pas demande, c'est elle qui valide.
+  const needsQuality = a.action === "release" && a.requested_role !== "qualite" && me.role !== "qualite";
+  const canDecide = a.status === "pending" && !mine && CAN_VALIDATE.includes(me.role) && a.requested_role !== me.role && !needsQuality;
 
   async function decide(verb: "approve" | "reject" | "cancel", body: Record<string, unknown> = {}) {
     setError(null);
@@ -296,7 +298,7 @@ function ApprovalRow({ a, me, reasons, onChanged }: { a: Approval; me: Me; reaso
           </form>
         )}
         {a.status === "pending" && mine && <button onClick={() => decide("cancel")}>Annuler ma demande</button>}
-        {a.status === "pending" && !mine && !canDecide && <small>À valider par un autre rôle</small>}
+        {a.status === "pending" && !mine && !canDecide && <small>{needsQuality ? "À valider par la Qualité" : "À valider par un autre rôle"}</small>}
         {error && <p role="alert">{error}</p>}
       </td>
     </tr>
@@ -361,7 +363,8 @@ export default function Validations() {
       <h1>Validations</h1>
       <p>
         Déblocage, destruction, rebut et ajustement de stock demandent l&apos;accord de deux personnes : l&apos;une demande, une
-        autre d&apos;un rôle différent valide. Vous êtes <strong>{me.username}</strong> ({ROLES[me.role] || me.role}).
+        autre d&apos;un rôle différent valide. Un déblocage passe toujours par la Qualité. Une décision prise est définitive :
+        on la corrige par une nouvelle action (rebloquer le lot, nouvelle demande). Vous êtes <strong>{me.username}</strong> ({ROLES[me.role] || me.role}).
       </p>
       {message && <p style={{ background: "#e8f5e9", padding: 8 }}>{message}</p>}
       {error && <p role="alert">{error}</p>}
