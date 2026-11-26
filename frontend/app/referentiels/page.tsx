@@ -37,7 +37,7 @@ function errorText(body: unknown): string {
   // Erreurs DRF {champ: [messages]} transformees en une phrase lisible.
   if (!body || typeof body !== "object") return "Enregistrement refusé.";
   const labels: Record<string, string> = {
-    name: "Nom", address: "Adresse", email: "E-mail", shelf_life_days: "Durée de vie", allergens: "Allergènes",
+    code: "Code", article_type: "Type", base_unit: "Unité", name: "Nom", address: "Adresse", email: "E-mail", shelf_life_days: "Durée de vie", allergens: "Allergènes",
   };
   return Object.entries(body as Record<string, unknown>)
     .map(([field, msgs]) => {
@@ -53,12 +53,13 @@ function ArticleEditor({
   onCancel,
   onSaved,
 }: {
-  article: Article;
+  article: Article | null; // null = creation d'un nouvel article
   allergens: Allergen[];
   onCancel: () => void;
   onSaved: () => void;
 }) {
-  const needsAllergens = article.article_type === "matiere" || article.allergens !== null;
+  const [articleType, setArticleType] = useState(article ? article.article_type : "matiere");
+  const needsAllergens = articleType === "matiere" || (article !== null && article.allergens !== null);
   const [error, setError] = useState<string | null>(null);
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
@@ -76,28 +77,63 @@ function ArticleEditor({
       payload.allergens = Object.fromEntries(allergens.map((a) => [a.code, String(form.get(`allergen_${a.code}`))]));
     }
     try {
-      await api(`articles/${article.id}/`, { method: "PATCH", body: JSON.stringify(payload) });
+      if (article) {
+        await api(`articles/${article.id}/`, { method: "PATCH", body: JSON.stringify(payload) });
+      } else {
+        payload.code = String(form.get("code") || "").trim();
+        payload.article_type = articleType;
+        payload.base_unit = String(form.get("base_unit") || "");
+        await api("articles/", { method: "POST", body: JSON.stringify(payload) });
+      }
       onSaved();
     } catch (e) {
-      if (e instanceof ApiError && e.status === 403) setError("Votre rôle ne permet pas de modifier un article.");
+      if (e instanceof ApiError && e.status === 403) setError("Votre rôle ne permet pas d'enregistrer un article.");
       else setError(e instanceof ApiError ? errorText(e.body) : "Erreur pendant l'enregistrement.");
     }
   }
 
   return (
     <form onSubmit={onSubmit} style={{ display: "grid", gap: 8, padding: 12, border: "1px solid #888", margin: "8px 0" }}>
-      <strong>
-        Modifier {article.code} (unité de base {article.base_unit}, non modifiable)
-      </strong>
+      {article ? (
+        <strong>
+          Modifier {article.code} (unité de base {article.base_unit}, non modifiable)
+        </strong>
+      ) : (
+        <>
+          <strong>Nouvel article</strong>
+          <label>
+            Code <input name="code" required maxLength={50} />
+          </label>
+          <label>
+            Type{" "}
+            <select name="article_type" value={articleType} onChange={(e) => setArticleType(e.target.value)}>
+              {Object.entries(TYPES).map(([v, label]) => (
+                <option key={v} value={v}>
+                  {label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Unité de base (non modifiable ensuite){" "}
+            <select name="base_unit" defaultValue="kg">
+              <option value="kg">kg</option>
+              <option value="l">L</option>
+              <option value="unite">unité</option>
+            </select>
+          </label>
+        </>
+      )}
       <label>
-        Nom <input name="name" defaultValue={article.name} required style={{ width: 320 }} />
+        Nom <input name="name" defaultValue={article?.name ?? ""} required style={{ width: 320 }} />
       </label>
       <label>
-        Durée de vie (jours) <input name="shelf_life_days" type="number" min={1} defaultValue={article.shelf_life_days ?? ""} />
+        Durée de vie (jours){" "}
+        <input name="shelf_life_days" type="number" min={1} defaultValue={article?.shelf_life_days ?? ""} />
       </label>
       <label>
         Conservation{" "}
-        <select name="storage" defaultValue={article.storage}>
+        <select name="storage" defaultValue={article?.storage ?? ""}>
           {Object.entries(STORAGES).map(([v, label]) => (
             <option key={v} value={v}>
               {label}
@@ -106,7 +142,7 @@ function ArticleEditor({
         </select>
       </label>
       <label>
-        <input type="checkbox" name="is_active" defaultChecked={article.is_active} /> Actif
+        <input type="checkbox" name="is_active" defaultChecked={article?.is_active ?? true} /> Actif
       </label>
       {needsAllergens && (
         <fieldset>
@@ -115,7 +151,7 @@ function ArticleEditor({
             {allergens.map((a) => (
               <label key={a.code} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
                 <span>{a.name}</span>
-                <select name={`allergen_${a.code}`} defaultValue={article.allergens?.[a.code] ?? ""} required>
+                <select name={`allergen_${a.code}`} defaultValue={article?.allergens?.[a.code] ?? ""} required>
                   <option value="" disabled>
                     À déclarer
                   </option>
@@ -199,7 +235,15 @@ function ImportForm({ path, model, onDone }: { path: string; model: string; onDo
   );
 }
 
-function PartnerEditor({ partner, onCancel, onSaved }: { partner: Partner; onCancel: () => void; onSaved: () => void }) {
+function PartnerEditor({
+  partner,
+  onCancel,
+  onSaved,
+}: {
+  partner: Partner | null; // null = creation
+  onCancel: () => void;
+  onSaved: () => void;
+}) {
   const [error, setError] = useState<string | null>(null);
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
@@ -218,42 +262,43 @@ function PartnerEditor({ partner, onCancel, onSaved }: { partner: Partner; onCan
       is_active: form.get("is_active") === "on",
     };
     try {
-      await api(`partners/${partner.id}/`, { method: "PATCH", body: JSON.stringify(payload) });
+      if (partner) await api(`partners/${partner.id}/`, { method: "PATCH", body: JSON.stringify(payload) });
+      else await api("partners/", { method: "POST", body: JSON.stringify(payload) });
       onSaved();
     } catch (e) {
-      if (e instanceof ApiError && e.status === 403) setError("Votre rôle ne permet pas de modifier un partenaire.");
+      if (e instanceof ApiError && e.status === 403) setError("Votre rôle ne permet pas d'enregistrer un partenaire.");
       else setError(e instanceof ApiError ? errorText(e.body) : "Erreur pendant l'enregistrement.");
     }
   }
 
   return (
     <form onSubmit={onSubmit} style={{ display: "grid", gap: 8, padding: 12, border: "1px solid #888", margin: "8px 0" }}>
-      <strong>Modifier {partner.name}</strong>
+      <strong>{partner ? `Modifier ${partner.name}` : "Nouveau fournisseur ou client"}</strong>
       <label>
-        Nom <input name="name" defaultValue={partner.name} required style={{ width: 320 }} />
+        Nom <input name="name" defaultValue={partner?.name ?? ""} required style={{ width: 320 }} />
       </label>
       <div>
         <label>
-          <input type="checkbox" name="is_supplier" defaultChecked={partner.is_supplier} /> Fournisseur
+          <input type="checkbox" name="is_supplier" defaultChecked={partner?.is_supplier ?? true} /> Fournisseur
         </label>{" "}
         <label>
-          <input type="checkbox" name="is_customer" defaultChecked={partner.is_customer} /> Client
+          <input type="checkbox" name="is_customer" defaultChecked={partner?.is_customer ?? false} /> Client
         </label>
       </div>
       <label>
-        Adresse <textarea name="address" defaultValue={partner.address} required rows={2} style={{ width: 420 }} />
+        Adresse <textarea name="address" defaultValue={partner?.address ?? ""} required rows={2} style={{ width: 420 }} />
       </label>
       <label>
-        Contact <input name="contact_name" defaultValue={partner.contact_name} />
+        Contact <input name="contact_name" defaultValue={partner?.contact_name ?? ""} />
       </label>
       <label>
-        Téléphone <input name="phone" defaultValue={partner.phone} />
+        Téléphone <input name="phone" defaultValue={partner?.phone ?? ""} />
       </label>
       <label>
-        E-mail <input name="email" type="email" defaultValue={partner.email} />
+        E-mail <input name="email" type="email" defaultValue={partner?.email ?? ""} />
       </label>
       <label>
-        <input type="checkbox" name="is_active" defaultChecked={partner.is_active} /> Actif
+        <input type="checkbox" name="is_active" defaultChecked={partner?.is_active ?? true} /> Actif
       </label>
       {error && <p role="alert">{error}</p>}
       <div>
@@ -302,6 +347,19 @@ export default function Referentiels() {
       <h1>Référentiels</h1>
 
       <h2>Articles</h2>
+      {editing === "new-article" ? (
+        <ArticleEditor
+          article={null}
+          allergens={allergens}
+          onCancel={() => setEditing(null)}
+          onSaved={() => {
+            setEditing(null);
+            load();
+          }}
+        />
+      ) : (
+        <button onClick={() => setEditing("new-article")}>Nouvel article</button>
+      )}
       <ImportForm path="articles/import/" model="/modeles/articles.csv" onDone={load} />
       {articles === null ? (
         <p>Chargement...</p>
@@ -355,6 +413,18 @@ export default function Referentiels() {
       )}
 
       <h2>Fournisseurs et clients</h2>
+      {editing === "new-partner" ? (
+        <PartnerEditor
+          partner={null}
+          onCancel={() => setEditing(null)}
+          onSaved={() => {
+            setEditing(null);
+            load();
+          }}
+        />
+      ) : (
+        <button onClick={() => setEditing("new-partner")}>Nouveau fournisseur ou client</button>
+      )}
       <ImportForm path="partners/import/" model="/modeles/partenaires.csv" onDone={load} />
       {partners === null ? (
         <p>Chargement...</p>
