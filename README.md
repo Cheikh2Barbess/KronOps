@@ -89,18 +89,21 @@ Format du fichier articles : séparateur `;` ou `,`, une ligne d'en-tête. Colon
 Par défaut, l'écran tourne en mode développement : chaque page est compilée à sa première visite, ce qui ralentit la navigation, surtout sous Docker Desktop Windows. Pour juger de la vraie vitesse, lance l'écran déjà compilé :
 
 ```
-docker compose -f docker-compose.yml -f docker-compose.front-prod.yml up --build -d
+docker compose -f docker-compose.yml -f docker-compose.front-prod.yml up --build -d --wait
 ```
 
-La première fois, la compilation prend une ou deux minutes. Ensuite, chaque modification du code de l'écran (par exemple après un `git pull`) demande de relancer la même commande. Pour revenir au mode développement : `docker compose up --build -d`.
+La première fois, la compilation prend une ou deux minutes. Ensuite, chaque modification du code de l'écran (par exemple après un `git pull`) demande de relancer la même commande. Pour revenir au mode développement : `docker compose up --build -d --wait`.
 
 ### 9. Essayer la traçabilité avec des données de démonstration
 
 Les ordres de fabrication ne sont pas encore écrits. Une commande crée donc un petit jeu de démonstration (farine et beurre reçus, deux lots de biscuits, une expédition), avec des codes qui commencent par DEMO :
 
 ```
+docker compose up --build -d --wait
 docker compose exec backend python manage.py demo_tracabilite --admin patron
 ```
+
+`--wait` rend la main seulement quand l'API a fini ses migrations et répond. Sans lui, la commande de démonstration peut arriver trop tôt : elle le dit et il suffit de la relancer 30 secondes plus tard.
 
 Remplace `patron` par ton identifiant administrateur. Ouvre ensuite http://localhost:3000/tracabilite, cherche `DEMO-MOULIN-001` en aval : tu vois les deux lots de biscuits et le supermarché livré. Cherche ensuite le code du premier lot de biscuits en amont : tu retrouves la farine, le beurre et leurs fournisseurs.
 
@@ -115,6 +118,7 @@ Remplace `patron` par ton identifiant administrateur. Ouvre ensuite http://local
 | `role ... already exists`, `database "kronops" does not exist` ou `password authentication failed` en boucle | La base a été créée avec une ancienne version de `.env` | `docker compose down -v` puis `docker compose up --build` |
 | Après un `git pull`, l'écran ne change pas, même avec `Ctrl + F5` | Sous Windows et Mac, Docker Desktop ne prévient pas toujours Next.js qu'un fichier a changé (limite documentée par Next.js) | `docker compose restart frontend`, attends « Ready » dans le terminal, puis recharge la page |
 | Passer d'une page à l'autre prend plusieurs secondes | Le mode développement compile les pages à la demande | Lance l'écran en mode production (étape 8) |
+| `relation "..." does not exist` juste après `docker compose up -d` | L'API joue encore ses migrations | Attends 30 secondes et relance la commande, ou utilise `docker compose up --build -d --wait` |
 | La page affiche « Service : injoignable » | L'API n'a pas fini de démarrer | Attends 30 secondes et recharge la page |
 | Tout est cassé et tu veux repartir de zéro | | `docker compose down -v` puis `docker compose up --build`. **Attention : efface toutes les données locales.** |
 
