@@ -93,6 +93,13 @@ function ReasonPicker({ options, name = "reason_code" }: { options: Option[]; na
 }
 
 const fmt = (n: string) => Number(n).toLocaleString("fr-FR", { maximumFractionDigits: 3 });
+// Unite de base de l'article, choisie a sa creation dans une liste fermee (kg, L, unité) et non modifiable.
+function unitLabel(unit: string, quantity?: string | number | null): string {
+  if (unit === "l") return "L";
+  if (unit === "unite") return quantity !== undefined && quantity !== null && Math.abs(Number(quantity)) > 1 ? "unités" : "unité";
+  return unit;
+}
+const withUnit = (n: string, unit: string) => `${fmt(n)} ${unitLabel(unit, n)}`;
 const when = (d: string) => new Date(d).toLocaleString("fr-FR", { dateStyle: "short", timeStyle: "short" });
 
 function errorText(e: unknown): string {
@@ -109,13 +116,24 @@ function errorText(e: unknown): string {
 function LotPanel({ lot, me, reasons, onChanged }: { lot: Lot; me: Me; reasons: Reasons; onChanged: (message: string) => void }) {
   const allowed = Object.keys(ACTIONS).filter((a) => CAN_REQUEST[a].includes(me.role));
   const [action, setAction] = useState(allowed[0] || "");
+  const canBlock = lot.status === "disponible" && CAN_BLOCK.includes(me.role);
+  const canRequest = lot.status !== "detruit" && allowed.length > 0;
+  // L'utilisateur choisit d'abord ce qu'il veut faire : un seul formulaire est affiche a la fois.
+  const [mode, setMode] = useState<"" | "block" | "request">("");
   const [error, setError] = useState<string | null>(null);
+  const balance = Number(lot.balance);
+  const unit = unitLabel(lot.base_unit, 2);
 
   async function onRequest(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError(null);
     const form = new FormData(event.currentTarget);
     const quantity = String(form.get("quantity") || "").replace(",", ".").trim();
+    const removed = action === "scrap" ? Number(quantity) : action === "adjust" && Number(quantity) < 0 ? -Number(quantity) : 0;
+    if (removed > balance) {
+      setError(`Quantité supérieure au stock du lot (stock disponible : ${withUnit(lot.balance, lot.base_unit)}).`);
+      return;
+    }
     try {
       await api("approvals/", {
         method: "POST",
@@ -149,21 +167,37 @@ function LotPanel({ lot, me, reasons, onChanged }: { lot: Lot; me: Me; reasons: 
       <p>
         <strong>{lot.code}</strong> · {lot.article_code} {lot.article_name} · lot fournisseur {lot.supplier_lot_code || "(aucun)"} ·{" "}
         <strong>{LOT_STATUS[lot.status] || lot.status}</strong>
-        {lot.expired && " · périmé"} · en stock : {fmt(lot.balance)} {lot.base_unit}
+        {lot.expired && " · périmé"} · stock disponible : <strong>{withUnit(lot.balance, lot.base_unit)}</strong>
         {lot.block_reason && <> · motif du blocage : {lot.block_reason}</>}
       </p>
-      {lot.status === "disponible" && CAN_BLOCK.includes(me.role) && (
-        <form onSubmit={onBlock} style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center", marginBottom: 8 }} aria-label="Bloquer">
-          <strong>Bloquer :</strong>
+      {(canBlock || canRequest) && (
+        <fieldset style={{ border: "none", padding: 0, margin: "0 0 8px" }}>
+          <legend style={{ marginBottom: 4 }}>Que voulez-vous faire ?</legend>
+          {canBlock && (
+            <label style={{ marginRight: 16 }}>
+              <input type="radio" name={`mode-${lot.id}`} checked={mode === "block"} onChange={() => { setMode("block"); setError(null); }} />{" "}
+              Bloquer le lot (immédiat, sans double validation)
+            </label>
+          )}
+          {canRequest && (
+            <label>
+              <input type="radio" name={`mode-${lot.id}`} checked={mode === "request"} onChange={() => { setMode("request"); setError(null); }} />{" "}
+              Faire une demande (validée par une autre personne)
+            </label>
+          )}
+        </fieldset>
+      )}
+      {mode === "block" && canBlock && (
+        <form onSubmit={onBlock} style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }} aria-label="Bloquer">
           <ReasonPicker options={reasons.block || []} />
           <button type="submit">Bloquer ce lot</button>
-          <span style={{ color: "#555" }}>(immédiat, sans double validation)</span>
+          <span style={{ color: "#555" }}>Le lot entier est bloqué : aucune quantité à saisir.</span>
         </form>
       )}
-      {lot.status !== "detruit" && allowed.length > 0 && (
+      {mode === "request" && canRequest && (
         <form onSubmit={onRequest} style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
           <label>
-            Demander{" "}
+            Action{" "}
             <select name="action" value={action} onChange={(e) => setAction(e.target.value)}>
               {allowed.map((a) => (
                 <option key={a} value={a}>
@@ -174,16 +208,20 @@ function LotPanel({ lot, me, reasons, onChanged }: { lot: Lot; me: Me; reasons: 
           </label>
           {(action === "scrap" || action === "adjust") && (
             <label>
-              Quantité ({lot.base_unit}){" "}
+              {action === "scrap" ? "Quantité à retirer" : "Correction"}{" "}
               <input name="quantity" required inputMode="decimal" style={{ width: 100 }}
-                placeholder={action === "adjust" ? "ex. -2,5 ou 3" : "ex. 2,5"} />
+                placeholder={action === "adjust" ? "ex. -2,5 ou 3" : "ex. 2,5"} />{" "}
+              <strong>{unit}</strong>{" "}
+              <span style={{ color: "#555" }}>
+                (sur {withUnit(lot.balance, lot.base_unit)} en stock{action === "adjust" ? ", négatif pour retirer, positif pour ajouter" : ""})
+              </span>
             </label>
           )}
           <ReasonPicker key={action} options={reasons[action] || []} />
           <button type="submit">Envoyer la demande</button>
         </form>
       )}
-      {lot.status !== "detruit" && allowed.length === 0 && <p>Votre rôle ne permet pas de demander ces actions.</p>}
+      {lot.status !== "detruit" && !canBlock && !canRequest && <p>Votre rôle ne permet ni de bloquer ce lot ni de faire une demande.</p>}
       {error && <p role="alert">{error}</p>}
     </div>
   );
@@ -214,7 +252,7 @@ function ApprovalRow({ a, me, reasons, onChanged }: { a: Approval; me: Me; reaso
         <br />
         <small>{a.article_name}</small>
       </td>
-      <td>{a.quantity !== null ? `${fmt(a.quantity)} ${a.base_unit}` : ""}</td>
+      <td>{a.quantity !== null ? withUnit(a.quantity, a.base_unit) : ""}</td>
       <td>
         {a.reason_label}
         {a.comment && <> : {a.comment}</>}
@@ -328,7 +366,7 @@ export default function Validations() {
       {message && <p style={{ background: "#e8f5e9", padding: 8 }}>{message}</p>}
       {error && <p role="alert">{error}</p>}
 
-      <h2>Faire une demande sur un lot</h2>
+      <h2>Bloquer un lot ou faire une demande</h2>
       <form
         onSubmit={(e) => {
           e.preventDefault();

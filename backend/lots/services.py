@@ -40,6 +40,15 @@ def to_base_quantity(*, article, quantity, unit):
     return base.quantize(THOUSANDTH)
 
 
+def _over_stock_message(lot, balance):
+    """Message de refus lisible : stock disponible avec l'unite de base de l'article (ex. « 700 unités »)."""
+    amount = f"{balance.normalize():f}".replace(".", ",")
+    unit = lot.article.get_base_unit_display()
+    if lot.article.base_unit == "unite":
+        unit = "unité" if balance <= 1 else "unités"
+    return f"Quantité supérieure au stock du lot (stock disponible : {amount} {unit})."
+
+
 def _next_lot_code(article, day):
     # Verrou sur l'article : deux receptions simultanees ne peuvent pas prendre le meme numero.
     Article.objects.select_for_update().get(pk=article.pk)
@@ -168,7 +177,7 @@ def record_exit(*, tenant_id, user, lot_id, movement_type, quantity, partner=Non
         raise ValidationError({"lot": [f"Le lot {lot.code} est périmé (DLC dépassée)."]})
     balance = selectors.lot_balance(lot.id)
     if quantity > balance:
-        raise ValidationError({"quantity": [f"Quantité supérieure au solde du lot ({balance})."]})
+        raise ValidationError({"quantity": [_over_stock_message(lot, balance)]})
     movement = _movement(
         tenant_id=tenant_id, user=user, lot=lot, movement_type=movement_type, quantity=-quantity, partner=partner,
         reason=reason, occurred_at=occurred_at,
@@ -298,7 +307,7 @@ def _check_action_possible(*, lot, action, quantity):
     balance = selectors.lot_balance(lot.id)
     removed = quantity if action == A.SCRAP else (-quantity if action == A.ADJUST and quantity < 0 else 0)
     if removed > balance:
-        raise ValidationError({"quantity": [f"Quantité supérieure au solde du lot ({balance})."]})
+        raise ValidationError({"quantity": [_over_stock_message(lot, balance)]})
 
 
 @transaction.atomic

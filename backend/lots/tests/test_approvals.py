@@ -215,6 +215,15 @@ def test_scrap_cannot_exceed_balance_even_at_validation(c, tenant_a, admin_a, lo
     assert lot_state(tenant_a, lot)[1] == 50
 
 
+def test_quantity_above_stock_is_refused_with_stock_and_unit(c, lot):
+    r = ask(c["production"], "scrap", lot, quantity="150")
+    assert r.status_code == 400
+    assert "100 kg" in r.json()["quantity"][0]
+    r = ask(c["production"], "adjust", lot, quantity="-100.5")
+    assert r.status_code == 400
+    assert "100 kg" in r.json()["quantity"][0]
+
+
 def test_adjustment_up_and_down(c, tenant_a, lot):
     down = ask(c["production"], "adjust", lot, quantity="-3").json()["id"]
     up = ask(c["qualite"], "adjust", lot, quantity="1.250").json()["id"]
