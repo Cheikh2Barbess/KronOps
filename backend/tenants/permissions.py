@@ -30,3 +30,13 @@ class IsTenantAdmin(BasePermission):
 
     def has_permission(self, request, view):
         return has_role(request.user, R.ADMIN)
+
+
+class AuditReadPermission(BasePermission):
+    """Journal d'audit : lecture Admin et Qualite, aucune ecriture par l'API."""
+
+    message = "Le journal d'audit est réservé aux rôles Admin et Qualité."
+
+    def has_permission(self, request, view):
+        # Les vues du journal n'ont que GET : toute ecriture repond 405.
+        return has_role(request.user, R.ADMIN, R.QUALITE)

@@ -53,6 +53,11 @@ export default function Home() {
           <p>
             <a href="/referentiels">Référentiels : articles, fournisseurs et clients</a>
           </p>
+          {["admin", "qualite"].includes(me.role) && (
+            <p>
+              <a href="/journal">Journal d&apos;audit</a>
+            </p>
+          )}
           <button onClick={onLogout}>Se déconnecter</button>
         </section>
       ) : (
