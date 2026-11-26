@@ -79,4 +79,5 @@ def test_user_creation_names_the_new_user(tenant_a, admin_a):
                                     password="motdepasse-test-123", role=User.Role.OPERATEUR)
     line = entries(client_for(admin_a), entity_type="tenants.user")[0]
     assert line["subject"] == "op1"
-    assert line["new_values"] == {"username": "op1", "role": "operateur"}
+    assert line["new_values"]["username"] == "op1" and line["new_values"]["role"] == "operateur"
+    assert "password" not in line["new_values"]

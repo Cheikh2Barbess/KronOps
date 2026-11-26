@@ -54,6 +54,17 @@ class User(AbstractUser):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     tenant = models.ForeignKey(Tenant, on_delete=models.PROTECT, null=True, blank=True, related_name="users")
     role = models.CharField("rôle", max_length=20, choices=Role.choices, default=Role.LECTURE)
+    # Fiche (US-01, decision du 26/11/2026). Poste dans une liste fermee (tenants/jobs.py).
+    job_title = models.CharField("poste", max_length=40, blank=True)
+    job_title_other = models.CharField("poste (précision)", max_length=100, blank=True)
+    phone = models.CharField("téléphone", max_length=30, blank=True)
+    manager = models.ForeignKey(
+        "self", on_delete=models.PROTECT, null=True, blank=True, related_name="reports", verbose_name="supérieur"
+    )
+
+    @property
+    def full_name(self):
+        return f"{self.first_name} {self.last_name}".strip()
 
     class Meta:
         verbose_name = "utilisateur"

@@ -75,6 +75,12 @@ def describe(entries):
         units[str(r.pk)] = r.lot.article.base_unit
     for link in LotLink.objects.filter(pk__in=ids).select_related("parent_lot", "child_lot"):
         names[str(link.pk)] = f"{link.parent_lot.code} → {link.child_lot.code}"
+    if entries:
+        # Table des utilisateurs sans RLS : on passe par le selecteur, filtre par entreprise.
+        from tenants.selectors import users_of_tenant
+
+        for u in users_of_tenant(tenant_id=entries[0].tenant_id).filter(pk__in=ids):
+            names[str(u.pk)] = u.username
 
     subjects = {}
     for e in entries:

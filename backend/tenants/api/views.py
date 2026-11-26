@@ -5,14 +5,19 @@ from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import csrf_protect, ensure_csrf_cookie
 from drf_spectacular.utils import extend_schema
 from rest_framework import status
+from rest_framework.exceptions import ValidationError
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from core.api import TenantAPIView
 from tenants import selectors, services
-from tenants.api.serializers import LoginSerializer, MeSerializer, SiteSerializer
-from tenants.permissions import ReferentialPermission
+from tenants import jobs
+from tenants.api.serializers import (
+    LoginSerializer, MeSerializer, PersonSerializer, SiteSerializer, UserCardSerializer, UserWriteSerializer,
+)
+from tenants.models import User
+from tenants.permissions import ReferentialPermission, UserCardPermission, UserManagePermission
 
 
 @method_decorator(ensure_csrf_cookie, name="dispatch")
@@ -85,3 +90,84 @@ class SiteDetailView(TenantAPIView):
         if site is None:  # inexistant OU appartenant a un autre client : meme reponse 404
             raise Http404
         return Response(SiteSerializer(site).data)
+
+
+def _manager(request, data):
+    """Le superieur est cherche dans l'entreprise de l'admin seulement (table sans RLS)."""
+    if "manager" not in data:
+        return data
+    manager_id = data["manager"]
+    if manager_id is None:
+        return data
+    manager = selectors.users_of_tenant(tenant_id=request.user.tenant_id).filter(pk=manager_id).first()
+    if manager is None:
+        raise ValidationError({"manager": ["Supérieur introuvable."]})
+    return {**data, "manager": manager}
+
+
+class UserListView(TenantAPIView):
+    """Ecran Utilisateurs (Admin) : liste complete et creation."""
+
+    permission_classes = [IsAuthenticated, UserManagePermission]
+
+    @extend_schema(responses={200: UserCardSerializer(many=True)})
+    def get(self, request):
+        users = selectors.users_of_tenant(tenant_id=request.user.tenant_id).select_related("manager")
+        return Response(UserCardSerializer(users, many=True).data)
+
+    @extend_schema(request=UserWriteSerializer, responses={201: UserCardSerializer})
+    def post(self, request):
+        serializer = UserWriteSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = _manager(request, serializer.validated_data)
+        missing = [f for f in ("username", "password", "role") if not data.get(f)]
+        if missing:
+                raise ValidationError({f: ["Ce champ est obligatoire."] for f in missing})
+        data.pop("is_active", None)
+        user = services.create_user(tenant_id=request.user.tenant_id, user=request.user, **data)
+        return Response(UserCardSerializer(user).data, status=status.HTTP_201_CREATED)
+
+
+class UserOptionsView(TenantAPIView):
+    """Listes du formulaire : postes et roles. Ce ne sont pas des donnees personnelles : lisibles par les
+    responsables, pour traduire les codes du journal."""
+
+    permission_classes = [IsAuthenticated, UserCardPermission]
+
+    @extend_schema(responses={200: dict})
+    def get(self, request):
+        return Response({
+            "job_titles": jobs.as_options(),
+            "roles": [{"code": code, "label": label} for code, label in User.Role.choices],
+        })
+
+
+class UserDirectoryView(TenantAPIView):
+    """Annuaire court (nom complet, poste) pour afficher les personnes partout. Responsables seulement."""
+
+    permission_classes = [IsAuthenticated, UserCardPermission]
+
+    @extend_schema(responses={200: PersonSerializer(many=True)})
+    def get(self, request):
+        return Response(PersonSerializer(selectors.users_of_tenant(tenant_id=request.user.tenant_id), many=True).data)
+
+
+class UserDetailView(TenantAPIView):
+    """Fiche d'une personne : lecture par les responsables, modification par l'Admin."""
+
+    permission_classes = [IsAuthenticated, UserCardPermission]
+
+    @extend_schema(responses={200: UserCardSerializer})
+    def get(self, request, pk):
+        user = selectors.user_of_tenant_or_404(tenant_id=request.user.tenant_id, user_id=pk)
+        return Response(UserCardSerializer(user).data)
+
+    @extend_schema(request=UserWriteSerializer, responses={200: UserCardSerializer})
+    def patch(self, request, pk):
+        target = selectors.user_of_tenant_or_404(tenant_id=request.user.tenant_id, user_id=pk)
+        serializer = UserWriteSerializer(data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        data = _manager(request, serializer.validated_data)
+        data.pop("username", None)  # l'identifiant ne change pas : il est cite dans tout le journal
+        user = services.update_user(tenant_id=request.user.tenant_id, user=request.user, target=target, **data)
+        return Response(UserCardSerializer(user).data)

@@ -133,6 +133,16 @@ Crée un opérateur (`create_user --admin patron --username op1 --role operateur
 3. Enregistre : le numéro du lot s'affiche, à écrire sur la livraison.
 4. En cas d'erreur, « Annuler » dans la liste des dernières réceptions, avec un motif. C'est possible tant que le lot n'a pas servi. Un opérateur ne voit et n'annule que ses propres réceptions.
 
+### 12. Gérer les utilisateurs et voir les fiches
+
+Connecte-toi en Admin, puis « Utilisateurs » sur l'accueil (http://localhost:3000/utilisateurs) :
+
+1. « Ajouter un utilisateur » : identifiant, prénom, nom, poste (liste, « Autre » demande une précision), téléphone et e-mail professionnels, rôle, supérieur (liste des comptes actifs), mot de passe.
+2. « Modifier » : tout sauf l'identifiant, qui reste cité dans le journal. Décocher « Compte actif » empêche la connexion sans effacer l'historique. Un Admin ne peut ni se désactiver ni retirer son propre rôle.
+3. Dans le journal, les validations et les réceptions, un nom s'affiche « Prénom Nom (identifiant) ». Un clic ouvre la fiche.
+
+Les fiches sont visibles par l'Admin, la Qualité et la Production. Les rôles Opérateur et Lecture ne voient que les identifiants (données personnelles, principe de minimisation de la loi ivoirienne 2013-450). Pas d'adresse ni de téléphone personnel. Chaque création ou modification est tracée au journal, jamais le mot de passe.
+
 ## En cas de problème
 
 | Message | Cause probable | Solution |

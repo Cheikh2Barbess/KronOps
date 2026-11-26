@@ -84,3 +84,28 @@ class ApprovalPermission(BasePermission):
 
     def has_permission(self, request, view):
         return has_role(request.user, R.ADMIN, R.QUALITE, R.PRODUCTION, R.OPERATEUR)
+
+
+class UserManagePermission(BasePermission):
+    """Gestion des utilisateurs (creer, modifier, desactiver) : Admin seulement."""
+
+    message = "Seul l'administrateur de l'entreprise gère les utilisateurs."
+
+    def has_permission(self, request, view):
+        return has_role(request.user, R.ADMIN)
+
+
+# « Responsables » (regle proposee le 26/11/2026) : Admin, Qualite, Production. Ni Operateur ni Lecture.
+RESPONSABLES = (R.ADMIN, R.QUALITE, R.PRODUCTION)
+
+
+class UserCardPermission(BasePermission):
+    """Fiches des personnes (nom, poste, telephone, e-mail, superieur) : donnees personnelles, minimisation
+    (loi ivoirienne 2013-450). Lecture par les responsables, modification par l'Admin."""
+
+    message = "Les fiches des personnes sont réservées aux responsables."
+
+    def has_permission(self, request, view):
+        if request.method in SAFE_METHODS:
+            return has_role(request.user, *RESPONSABLES)
+        return has_role(request.user, R.ADMIN)

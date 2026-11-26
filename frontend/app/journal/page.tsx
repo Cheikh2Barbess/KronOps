@@ -3,6 +3,7 @@
 // Journal d'audit (US-03) : qui a cree, modifie ou annule quoi, quand, avec ancienne et nouvelle valeur.
 // Lecture seule. Reserve aux roles Admin et Qualite (controle fait par l'API).
 import { FormEvent, useCallback, useEffect, useState } from "react";
+import { Person, personLabel, useDirectory } from "@/components/Person";
 import { api, ApiError } from "@/lib/api";
 
 type Values = Record<string, unknown> | null;
@@ -107,6 +108,12 @@ const FIELDS: Record<string, string> = {
   reception_temperature_c: "température à réception",
   username: "identifiant",
   role: "rôle",
+  first_name: "prénom",
+  last_name: "nom",
+  job_title: "poste",
+  job_title_other: "précision du poste",
+  manager: "supérieur",
+  password: "mot de passe",
 };
 // Valeurs codees traduites, par champ.
 const VALUES: Record<string, Record<string, string>> = {
@@ -141,7 +148,7 @@ const day = (iso: string) => {
 };
 const stamp = (iso: string) => new Date(iso).toLocaleString("fr-FR", { dateStyle: "short", timeStyle: "short" });
 
-type Ctx = { entry: Entry; codes: Record<string, string>; allergens: Record<string, string> };
+type Ctx = { entry: Entry; codes: Record<string, string>; allergens: Record<string, string>; jobs: Record<string, string> };
 
 function show(field: string, value: unknown, ctx: Ctx): string {
   if (value === null || value === undefined || value === "") return "(vide)";
@@ -156,6 +163,7 @@ function show(field: string, value: unknown, ctx: Ctx): string {
   const text = String(value);
   if (field.endsWith("_id")) return ctx.entry.refs[text] || "(objet introuvable)";
   if (VALUES[field]) return VALUES[field][text] || text;
+  if (field === "job_title") return ctx.jobs[text] || text;
   if (["reason_code", "decision_code", "block_code"].includes(field)) return ctx.codes[text] || text;
   if (field === "quantity") return `${num(text)} ${unitName(ctx.entry.unit, text)}`.trim();
   if (field === "factor") return `${num(text)} ${unitName(ctx.entry.unit, text)}`.trim();
@@ -254,8 +262,10 @@ function Changes({ ctx }: { ctx: Ctx }) {
 export default function Journal() {
   const [page, setPage] = useState<Page | null>(null);
   const [users, setUsers] = useState<AuditUser[]>([]);
+  const people = useDirectory();
   const [codes, setCodes] = useState<Record<string, string>>({});
   const [allergens, setAllergens] = useState<Record<string, string>>({});
+  const [jobs, setJobs] = useState<Record<string, string>>({});
   const [query, setQuery] = useState("");
   const [pageNumber, setPageNumber] = useState(1);
   const [error, setError] = useState<string | null>(null);
@@ -281,6 +291,9 @@ export default function Journal() {
     api<Record<string, Option[]>>("approvals/reasons/")
       .then((lists) => setCodes(Object.fromEntries(Object.values(lists).flat().map((o) => [o.code, o.label]))))
       .catch(() => setCodes({}));
+    api<{ job_titles: Option[] }>("users/options/")
+      .then((o) => setJobs(Object.fromEntries(o.job_titles.map((j) => [j.code, j.label]))))
+      .catch(() => setJobs({}));
     api<{ code: string; name: string }[]>("allergens/")
       .then((list) => setAllergens(Object.fromEntries(list.map((a) => [a.code, a.name]))))
       .catch(() => setAllergens({}));
@@ -332,7 +345,7 @@ export default function Journal() {
           <option value="">Tous les utilisateurs</option>
           {users.map((u) => (
             <option key={u.id} value={u.id}>
-              {u.username}
+              {personLabel(people?.get(u.username), u.username)}
             </option>
           ))}
         </select>
@@ -366,7 +379,9 @@ export default function Journal() {
               {page.results.map((e) => (
                 <tr key={e.id} style={{ borderTop: "1px solid #ddd", verticalAlign: "top" }}>
                   <td style={{ whiteSpace: "nowrap" }}>{stamp(e.created_at)}</td>
-                  <td>{e.username || "(système)"}</td>
+                  <td>
+                    <Person username={e.username} />
+                  </td>
                   <td>{ACTIONS[e.action] || e.action}</td>
                   <td>
                     {ENTITY_ONE[e.entity_type] || e.entity_label}
@@ -378,7 +393,7 @@ export default function Journal() {
                     )}
                   </td>
                   <td style={{ overflowWrap: "anywhere" }}>
-                    <Changes ctx={{ entry: e, codes, allergens }} />
+                    <Changes ctx={{ entry: e, codes, allergens, jobs }} />
                   </td>
                 </tr>
               ))}

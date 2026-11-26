@@ -77,6 +77,11 @@ export default function Home() {
               <a href="/journal">Journal d&apos;audit</a>
             </p>
           )}
+          {me.role === "admin" && (
+            <p>
+              <a href="/utilisateurs">Utilisateurs : créer, modifier, désactiver</a>
+            </p>
+          )}
           <button onClick={onLogout}>Se déconnecter</button>
         </section>
       ) : (
