@@ -69,18 +69,34 @@ def test_refrigerated_article_needs_temperature(operator_client, reception_paylo
 
 
 def test_non_conform_reception_creates_blocked_lot(operator_client, reception_payload, tenant_a):
-    reception_payload.update(visual_ok=False, reason="Sacs déchirés")
+    # Motif choisi dans la meme liste que le blocage (regle « le moins de texte libre possible », 26/11).
+    reception_payload.update(visual_ok=False, reason_code="emballage_abime", comment="sacs déchirés")
     body = operator_client.post(URL, reception_payload, format="json").json()
     assert body["status"] == "bloque"
-    assert body["block_reason"] == "Sacs déchirés"
-    assert body["block_code"] == "reception_non_conforme"
+    assert body["block_code"] == "emballage_abime"
+    assert body["block_reason"] == "Réception non conforme : Emballage abîmé : sacs déchirés"
+    assert body["reception_visual_ok"] is False
     with tenant_context(tenant_a.id):
         assert OutboxEvent.objects.filter(event_type="lot.blocked").exists()
 
 
-def test_non_conform_reception_needs_a_reason(operator_client, reception_payload):
+def test_non_conform_reception_needs_a_coded_reason(operator_client, reception_payload):
     reception_payload["visual_ok"] = False
     assert operator_client.post(URL, reception_payload, format="json").status_code == 400
+    reception_payload["reason_code"] = "pas_dans_la_liste"
+    assert operator_client.post(URL, reception_payload, format="json").status_code == 400
+    reception_payload["reason_code"] = "autre"  # « Autre » exige une precision
+    assert operator_client.post(URL, reception_payload, format="json").status_code == 400
+    reception_payload["comment"] = "odeur suspecte"
+    body = operator_client.post(URL, reception_payload, format="json").json()
+    assert body["block_reason"] == "Réception non conforme : odeur suspecte"
+
+
+def test_conform_reception_ignores_the_reason(operator_client, reception_payload):
+    reception_payload.update(visual_ok=True, reason_code="temperature")
+    body = operator_client.post(URL, reception_payload, format="json").json()
+    assert body["status"] == "disponible"
+    assert body["block_code"] == ""
 
 
 def test_paper_reentry_keeps_declared_date(operator_client, reception_payload):

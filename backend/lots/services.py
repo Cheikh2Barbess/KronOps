@@ -78,10 +78,11 @@ def _lot_values(lot):
     }
 
 
-def _movement(*, tenant_id, user, lot, movement_type, quantity, partner=None, reason="", occurred_at=None, reverses=None):
+def _movement(*, tenant_id, user, lot, movement_type, quantity, partner=None, reason="", occurred_at=None, reverses=None,
+              reason_code=""):
     movement = Movement.objects.create(
         tenant_id=tenant_id, lot=lot, movement_type=movement_type, quantity=quantity, partner=partner,
-        reason=reason, occurred_at=occurred_at or timezone.now(), user=user, reverses=reverses,
+        reason=reason, reason_code=reason_code, occurred_at=occurred_at or timezone.now(), user=user, reverses=reverses,
     )
     record_audit(
         tenant_id=tenant_id, user=user, action="create", entity=movement,
@@ -101,7 +102,7 @@ def _movement(*, tenant_id, user, lot, movement_type, quantity, partner=None, re
 
 @transaction.atomic
 def create_lot(*, tenant_id, user, article, quantity, entry_type, supplier=None, supplier_lot_code="",
-               date_type="", expiry_date=None, temperature_c=None, visual_ok=None, block_reason="",
+               date_type="", expiry_date=None, temperature_c=None, visual_ok=None, block_reason="", block_code="",
                occurred_at=None):
     """Brique commune : cree un lot et son mouvement d'entree (reception ou production)."""
     if entry_type not in (Movement.Type.RECEPTION, Movement.Type.PRODUCTION):
@@ -113,7 +114,7 @@ def create_lot(*, tenant_id, user, article, quantity, entry_type, supplier=None,
         supplier_lot_code=supplier_lot_code, date_type=date_type if expiry_date else "", expiry_date=expiry_date,
         production_date=day, reception_temperature_c=temperature_c, reception_visual_ok=visual_ok,
         status=Lot.Status.BLOQUE if block_reason else Lot.Status.DISPONIBLE, block_reason=block_reason,
-        block_code=reasons.RECEPTION_NON_CONFORME if block_reason else "",
+        block_code=(block_code or reasons.RECEPTION_NON_CONFORME) if block_reason else "",
     )
     _movement(
         tenant_id=tenant_id, user=user, lot=lot, movement_type=entry_type, quantity=quantity, partner=supplier,
@@ -123,14 +124,14 @@ def create_lot(*, tenant_id, user, article, quantity, entry_type, supplier=None,
     publish_event(tenant_id=tenant_id, event_type="lot.created", payload={"lot_id": str(lot.id), "code": lot.code})
     if block_reason:
         publish_event(
-            tenant_id=tenant_id, event_type="lot.blocked", payload={"lot_id": str(lot.id), "reason": block_reason}
+            tenant_id=tenant_id, event_type="lot.blocked", payload={"lot_id": str(lot.id), "reason_code": lot.block_code}
         )
     return lot
 
 
 @transaction.atomic
 def receive_lot(*, tenant_id, user, article, supplier, supplier_lot_code, quantity, unit, date_type=None,
-                expiry_date=None, visual_ok=True, temperature_c=None, reason="", occurred_at=None):
+                expiry_date=None, visual_ok=True, temperature_c=None, reason_code="", comment="", occurred_at=None):
     """US-04 (partie API) : reception d'un lot fournisseur."""
     errors = {}
     if not supplier.is_supplier:
@@ -143,17 +144,21 @@ def receive_lot(*, tenant_id, user, article, supplier, supplier_lot_code, quanti
         errors["date_type"] = ["Préciser s'il s'agit d'une DLC ou d'une DDM."]
     if article.storage in (Article.Storage.REFRIGERE, Article.Storage.CONGELE) and temperature_c is None:
         errors["temperature_c"] = ["Température à réception obligatoire pour un article réfrigéré ou congelé."]
-    if not visual_ok and not reason.strip():
-        errors["reason"] = ["Motif obligatoire quand la réception n'est pas conforme."]
+    if not visual_ok and not reason_code:
+        errors["reason_code"] = ["Motif obligatoire quand la réception n'est pas conforme."]
     if errors:
         raise ValidationError(errors)
+    block_reason = ""
+    if not visual_ok:
+        reason_code, comment = reasons.check(reasons.RECEPTION, reason_code, comment)
+        block_reason = f"{reasons.RECEPTION_PREFIX} : {reasons.text(reasons.RECEPTION, reason_code, comment)}"
     base_quantity = to_base_quantity(article=article, quantity=quantity, unit=unit)
     return create_lot(
         tenant_id=tenant_id, user=user, article=article, quantity=base_quantity, entry_type=Movement.Type.RECEPTION,
         supplier=supplier, supplier_lot_code=supplier_lot_code, date_type=date_type or "", expiry_date=expiry_date,
         temperature_c=temperature_c, visual_ok=visual_ok,
         # Reception non conforme : le lot nait bloque (cycle de vie du PRD).
-        block_reason="" if visual_ok else reason.strip(), occurred_at=occurred_at,
+        block_reason=block_reason, block_code=reason_code if block_reason else "", occurred_at=occurred_at,
     )
 
 
@@ -205,10 +210,9 @@ def block_lot(*, tenant_id, user, lot_id, reason_code, comment=""):
 
 
 @transaction.atomic
-def reverse_movement(*, tenant_id, user, movement_id, reason):
-    """Annule un mouvement par un contre-mouvement lie, avec motif. Jamais de modification ni de suppression."""
-    if not reason or not reason.strip():
-        raise ValidationError({"reason": ["Motif obligatoire."]})
+def reverse_movement(*, tenant_id, user, movement_id, reason_code, comment=""):
+    """Annule un mouvement par un contre-mouvement lie, avec motif code. Jamais de modification ni de suppression."""
+    reason_code, comment = reasons.check(reasons.REVERSAL, reason_code, comment)
     movement = Movement.objects.filter(pk=movement_id).first()
     if movement is None:
         raise ValidationError({"movement": ["Mouvement introuvable."]})
@@ -233,12 +237,13 @@ def reverse_movement(*, tenant_id, user, movement_id, reason):
         raise ValidationError({"movement": ["Cette annulation rendrait le stock négatif."]})
     reversal = _movement(
         tenant_id=tenant_id, user=user, lot=lot, movement_type=Movement.Type.ANNULATION, quantity=-movement.quantity,
-        partner=movement.partner, reason=reason.strip(), reverses=movement,
+        partner=movement.partner, reason=reasons.text(reasons.REVERSAL, reason_code, comment), reason_code=reason_code,
+        reverses=movement,
     )
     record_audit(
         tenant_id=tenant_id, user=user, action="cancel", entity=movement,
         old_values={"type": movement.movement_type, "quantity": str(movement.quantity)},
-        new_values={"reversal_id": str(reversal.id), "reason": reversal.reason},
+        new_values={"reversal_id": str(reversal.id), "reason_code": reason_code, "reason": reversal.reason},
     )
     publish_event(
         tenant_id=tenant_id, event_type="movement.reversed",
@@ -389,7 +394,7 @@ def approve_request(*, tenant_id, user, request_id):
         balance = selectors.lot_balance(lot.id)
         if balance > 0:
             req.movement = _movement(tenant_id=tenant_id, user=who, lot=lot, movement_type=Movement.Type.DESTRUCTION,
-                                     quantity=-balance, reason=reason)
+                                     quantity=-balance, reason=reason, reason_code=req.reason_code)
         old = _lot_values(lot)
         lot.status = Lot.Status.DETRUIT
         lot.save(update_fields=["status", "updated_at"])
@@ -398,10 +403,10 @@ def approve_request(*, tenant_id, user, request_id):
         publish_event(tenant_id=tenant_id, event_type="lot.destroyed", payload={"lot_id": str(lot.id)})
     elif req.action == A.SCRAP:
         req.movement = _movement(tenant_id=tenant_id, user=who, lot=lot, movement_type=Movement.Type.REBUT,
-                                 quantity=-req.quantity, reason=reason)
+                                 quantity=-req.quantity, reason=reason, reason_code=req.reason_code)
     else:
         req.movement = _movement(tenant_id=tenant_id, user=who, lot=lot, movement_type=Movement.Type.AJUSTEMENT,
-                                 quantity=req.quantity, reason=reason)
+                                 quantity=req.quantity, reason=reason, reason_code=req.reason_code)
     if req.action in (A.SCRAP, A.ADJUST, A.DESTROY) and selectors.lot_balance(lot.id) == 0:
         publish_event(tenant_id=tenant_id, event_type="lot.depleted", payload={"lot_id": str(lot.id)})
     old = _decide(req, user, ApprovalRequest.Status.APPROVED)

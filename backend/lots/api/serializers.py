@@ -16,14 +16,17 @@ class ReceptionSerializer(serializers.Serializer):
     expiry_date = serializers.DateField(required=False, allow_null=True)
     temperature_c = serializers.DecimalField(max_digits=5, decimal_places=1, required=False, allow_null=True)
     visual_ok = serializers.BooleanField(default=True)
-    reason = serializers.CharField(required=False, allow_blank=True, default="")
+    reason_code = serializers.ChoiceField(choices=list(reasons.RECEPTION), required=False, allow_blank=True, default="",
+                                          help_text="Obligatoire si visual_ok est faux. Voir approvals/reasons/ (reception).")
+    comment = serializers.CharField(required=False, allow_blank=True, default="", help_text="Obligatoire pour « autre ».")
     occurred_at = serializers.DateTimeField(
         required=False, allow_null=True, help_text="Date réelle, pour une ressaisie de fiche papier"
     )
 
 
-class ReasonSerializer(serializers.Serializer):
-    reason = serializers.CharField(allow_blank=False, trim_whitespace=True)
+class ReverseSerializer(serializers.Serializer):
+    reason_code = serializers.ChoiceField(choices=list(reasons.REVERSAL), help_text="Voir approvals/reasons/ (reversal).")
+    comment = serializers.CharField(required=False, allow_blank=True, default="", help_text="Obligatoire pour « autre ».")
 
 
 class MovementSerializer(serializers.ModelSerializer):
@@ -33,7 +36,7 @@ class MovementSerializer(serializers.ModelSerializer):
     class Meta:
         model = Movement
         fields = [
-            "id", "movement_type", "quantity", "partner", "partner_name", "reverses", "reason",
+            "id", "movement_type", "quantity", "partner", "partner_name", "reverses", "reason", "reason_code",
             "occurred_at", "created_at", "username",
         ]
 

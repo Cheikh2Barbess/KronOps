@@ -17,7 +17,7 @@ Ce dépôt contient le socle technique et les premières fonctions métier : les
 | Documentation de l'API | Générée automatiquement, visible sur `/api/v1/docs/` |
 | Référentiels (US-02) | Articles (matière, emballage, semi-fini, produit fini), allergènes obligatoires pour les matières (14 allergènes UE), conversions d'unités (1 sac = 25 kg), fournisseurs et clients, import CSV tout ou rien. Écran : http://localhost:3000/referentiels |
 | Journal d'audit (US-03) | Qui a créé, modifié ou importé quoi, quand, avec l'ancienne et la nouvelle valeur. Filtres par objet, action, utilisateur et dates. Lecture seule, rôles Admin et Qualité. Écran : http://localhost:3000/journal |
-| Lots et traçabilité | Réception d'un lot fournisseur (API seulement, l'écran attend les maquettes testées avec les opérateurs), stock par lot calculé depuis les mouvements, jamais négatif, blocage avec motif, annulation par contre-mouvement. Recherche aval (lot fournisseur vers lots produits et clients livrés) et amont. Écran : http://localhost:3000/tracabilite |
+| Lots et traçabilité | Réception d'un lot fournisseur (API seulement, l'écran attend les maquettes testées avec les opérateurs), stock par lot calculé depuis les mouvements, jamais négatif, blocage avec motif, annulation par contre-mouvement. Les motifs (blocage, réception non conforme, annulation, double validation) se choisissent dans des listes fermées, visibles sur http://localhost:3000/api/v1/approvals/reasons/ une fois connecté. Recherche aval (lot fournisseur vers lots produits et clients livrés) et amont. Écran : http://localhost:3000/tracabilite |
 | Tests automatiques | 118 tests, dont l'isolation entre clients et l'immuabilité de l'audit |
 
 ## Lancer KronOps sur ton ordinateur

@@ -18,9 +18,23 @@ BLOCK = {
     "reclamation_client": "Réclamation client",
     OTHER: "Autre (préciser)",
 }
-# Pose automatiquement par une reception non conforme, jamais choisi a la main.
+# Reception non conforme : meme liste que le blocage, le lot nait bloque.
+RECEPTION = BLOCK
+RECEPTION_PREFIX = "Réception non conforme"
+# Code des lots bloques a reception avant les motifs codes de reception (26/11/2026), garde pour l'affichage.
 RECEPTION_NON_CONFORME = "reception_non_conforme"
 BLOCK_AUTO = {RECEPTION_NON_CONFORME: "Réception non conforme"}
+
+# Annulation d'un mouvement (contre-mouvement).
+REVERSAL = {
+    "erreur_saisie": "Erreur de saisie",
+    "mauvais_lot": "Mauvais lot",
+    "mauvaise_quantite": "Mauvaise quantité",
+    "mauvais_type": "Mauvais type de mouvement",
+    "mauvais_partenaire": "Mauvais client ou fournisseur",
+    "doublon": "Saisie en double",
+    OTHER: "Autre (préciser)",
+}
 
 APPROVAL = {
     "release": {

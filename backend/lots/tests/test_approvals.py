@@ -193,7 +193,9 @@ def test_reason_comes_from_the_list_of_the_action(c, blocked_lot):
 
 def test_reason_lists_endpoint(c):
     body = c["operateur"].get(f"{URL}reasons/").json()
-    assert {"block", "reject", "release", "destroy", "scrap", "adjust"} <= set(body)
+    assert {"block", "reject", "release", "destroy", "scrap", "adjust", "reception", "reversal"} <= set(body)
+    assert body["reception"] == body["block"]
+    assert {"code": "doublon", "label": "Saisie en double"} in body["reversal"]
     assert {"code": "autre", "label": "Autre (préciser)"} in body["block"]
     assert c["lecture"].get(f"{URL}reasons/").status_code == 403
 
@@ -292,9 +294,11 @@ def test_validated_scrap_cannot_be_undone_alone(c, tenant_a, users, lot):
     c["qualite"].post(f"{URL}{request_id}/approve/", {}, format="json")
     with tenant_context(tenant_a.id):
         movement_id = Movement.objects.get(lot=lot, movement_type="rebut").id
-    r = c["admin"].post(f"/api/v1/movements/{movement_id}/reverse/", {"reason": "erreur"}, format="json")
+    r = c["admin"].post(f"/api/v1/movements/{movement_id}/reverse/", {"reason_code": "erreur_saisie"}, format="json")
     assert r.status_code == 400
     assert "ajustement" in str(r.json())
+    with tenant_context(tenant_a.id):
+        assert Movement.objects.get(pk=movement_id).reason_code == "casse"
 
 
 # Refus et annulation ------------------------------------------------------
