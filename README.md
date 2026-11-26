@@ -135,6 +135,7 @@ Règles (matrice des droits du PRD) : déblocage et destruction sont demandés p
 | `role ... already exists`, `database "kronops" does not exist` ou `password authentication failed` en boucle | La base a été créée avec une ancienne version de `.env` | `docker compose down -v` puis `docker compose up --build` |
 | Après un `git pull`, l'écran ne change pas, même avec `Ctrl + F5` | Sous Windows et Mac, Docker Desktop ne prévient pas toujours Next.js qu'un fichier a changé (limite documentée par Next.js) | `docker compose restart frontend`, attends « Ready » dans le terminal, puis recharge la page |
 | Passer d'une page à l'autre prend plusieurs secondes | Le mode développement compile les pages à la demande | Lance l'écran en mode production (étape 8) |
+| Après un `git pull`, l'API ne montre pas une nouveauté (nouveau champ, nouvelle liste) | Même cause côté serveur : sous Windows, le serveur Django ne voit pas les fichiers modifiés et garde l'ancien code | `docker compose restart backend` puis `docker compose up -d --wait`. Le redémarrage joue aussi les nouvelles migrations |
 | `relation "..." does not exist` juste après `docker compose up -d` | L'API joue encore ses migrations | Attends 30 secondes et relance la commande, ou utilise `docker compose up --build -d --wait` |
 | La page affiche « Service : injoignable » | L'API n'a pas fini de démarrer | Attends 30 secondes et recharge la page |
 | Tout est cassé et tu veux repartir de zéro | | `docker compose down -v` puis `docker compose up --build`. **Attention : efface toutes les données locales.** |
