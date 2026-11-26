@@ -22,8 +22,10 @@ type Partner = {
   is_supplier: boolean;
   is_customer: boolean;
   address: string;
+  contact_name: string;
   phone: string;
   email: string;
+  is_active: boolean;
 };
 type LineError = { line: number; messages: string[] };
 type Allergen = { code: string; name: string };
@@ -34,8 +36,14 @@ const STORAGES: Record<string, string> = { "": "(non précisé)", ambiant: "Ambi
 function errorText(body: unknown): string {
   // Erreurs DRF {champ: [messages]} transformees en une phrase lisible.
   if (!body || typeof body !== "object") return "Enregistrement refusé.";
+  const labels: Record<string, string> = {
+    name: "Nom", address: "Adresse", email: "E-mail", shelf_life_days: "Durée de vie", allergens: "Allergènes",
+  };
   return Object.entries(body as Record<string, unknown>)
-    .map(([field, msgs]) => `${field} : ${Array.isArray(msgs) ? msgs.join(" ") : String(msgs)}`)
+    .map(([field, msgs]) => {
+      const text = Array.isArray(msgs) ? msgs.join(" ") : String(msgs);
+      return field === "non_field_errors" || field === "detail" ? text : `${labels[field] || field} : ${text}`;
+    })
     .join(" ");
 }
 
@@ -191,6 +199,70 @@ function ImportForm({ path, model, onDone }: { path: string; model: string; onDo
   );
 }
 
+function PartnerEditor({ partner, onCancel, onSaved }: { partner: Partner; onCancel: () => void; onSaved: () => void }) {
+  const [error, setError] = useState<string | null>(null);
+
+  async function onSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setError(null);
+    const form = new FormData(event.currentTarget);
+    const text = (name: string) => String(form.get(name) || "").trim();
+    const payload = {
+      name: text("name"),
+      is_supplier: form.get("is_supplier") === "on",
+      is_customer: form.get("is_customer") === "on",
+      address: text("address"),
+      contact_name: text("contact_name"),
+      phone: text("phone"),
+      email: text("email"),
+      is_active: form.get("is_active") === "on",
+    };
+    try {
+      await api(`partners/${partner.id}/`, { method: "PATCH", body: JSON.stringify(payload) });
+      onSaved();
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 403) setError("Votre rôle ne permet pas de modifier un partenaire.");
+      else setError(e instanceof ApiError ? errorText(e.body) : "Erreur pendant l'enregistrement.");
+    }
+  }
+
+  return (
+    <form onSubmit={onSubmit} style={{ display: "grid", gap: 8, padding: 12, border: "1px solid #888", margin: "8px 0" }}>
+      <strong>Modifier {partner.name}</strong>
+      <label>
+        Nom <input name="name" defaultValue={partner.name} required style={{ width: 320 }} />
+      </label>
+      <div>
+        <label>
+          <input type="checkbox" name="is_supplier" defaultChecked={partner.is_supplier} /> Fournisseur
+        </label>{" "}
+        <label>
+          <input type="checkbox" name="is_customer" defaultChecked={partner.is_customer} /> Client
+        </label>
+      </div>
+      <label>
+        Adresse <textarea name="address" defaultValue={partner.address} required rows={2} style={{ width: 420 }} />
+      </label>
+      <label>
+        Contact <input name="contact_name" defaultValue={partner.contact_name} />
+      </label>
+      <label>
+        Téléphone <input name="phone" defaultValue={partner.phone} />
+      </label>
+      <label>
+        E-mail <input name="email" type="email" defaultValue={partner.email} />
+      </label>
+      <label>
+        <input type="checkbox" name="is_active" defaultChecked={partner.is_active} /> Actif
+      </label>
+      {error && <p role="alert">{error}</p>}
+      <div>
+        <button type="submit">Enregistrer</button> <button type="button" onClick={onCancel}>Annuler</button>
+      </div>
+    </form>
+  );
+}
+
 export default function Referentiels() {
   const [articles, setArticles] = useState<Article[] | null>(null);
   const [partners, setPartners] = useState<Partner[] | null>(null);
@@ -297,18 +369,37 @@ export default function Referentiels() {
               <th>Adresse</th>
               <th>Téléphone</th>
               <th>E-mail</th>
+              <th></th>
             </tr>
           </thead>
           <tbody>
-            {partners.map((p) => (
-              <tr key={p.id} style={{ borderTop: "1px solid #ddd" }}>
-                <td>{p.name}</td>
-                <td>{[p.is_supplier && "Fournisseur", p.is_customer && "Client"].filter(Boolean).join(", ")}</td>
-                <td>{p.address}</td>
-                <td>{p.phone}</td>
-                <td>{p.email}</td>
-              </tr>
-            ))}
+            {partners.map((p) =>
+              editing === p.id ? (
+                <tr key={p.id}>
+                  <td colSpan={6}>
+                    <PartnerEditor
+                      partner={p}
+                      onCancel={() => setEditing(null)}
+                      onSaved={() => {
+                        setEditing(null);
+                        load();
+                      }}
+                    />
+                  </td>
+                </tr>
+              ) : (
+                <tr key={p.id} style={{ borderTop: "1px solid #ddd", opacity: p.is_active ? 1 : 0.5 }}>
+                  <td>{p.name}</td>
+                  <td>{[p.is_supplier && "Fournisseur", p.is_customer && "Client"].filter(Boolean).join(", ")}</td>
+                  <td>{p.address}</td>
+                  <td>{p.phone}</td>
+                  <td>{p.email}</td>
+                  <td>
+                    <button onClick={() => setEditing(p.id)}>Modifier</button>
+                  </td>
+                </tr>
+              )
+            )}
           </tbody>
         </table>
       )}
