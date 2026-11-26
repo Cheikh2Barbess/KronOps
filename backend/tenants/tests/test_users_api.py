@@ -4,7 +4,8 @@
 - Visible par les responsables seulement (Admin, Qualite, Production). Ni Operateur ni Lecture :
   donnees personnelles, minimisation (loi ivoirienne 2013-450).
 - Gestion (creer, modifier, desactiver) : Admin seulement. Tout est trace au journal, jamais le mot de passe.
-- La table des utilisateurs n'a pas de RLS : chaque lecture filtre par entreprise (404 sinon).
+- La table des utilisateurs est protegee par la RLS (migration tenants/0003), et chaque lecture filtre
+  aussi par entreprise dans le code (404 sinon).
 """
 
 import pytest
@@ -30,7 +31,8 @@ def client_for(user):
 def boss(tenant_a):
     u = make_user(tenant_a, "patron")
     u.first_name, u.last_name, u.job_title = "Awa", "Koné", "directeur"
-    u.save()
+    with tenant_context(tenant_a.id):
+        u.save()
     return u
 
 
@@ -57,9 +59,9 @@ def test_admin_creates_a_user_with_a_full_card(admin, boss, tenant_a):
     assert card["role_label"] == "Opérateur"
     assert card["manager"] == {"id": str(boss.id), "username": "patron", "full_name": "Awa Koné"}
     assert "password" not in card
-    new = User.objects.get(username="op1")
-    assert new.tenant_id == tenant_a.id and new.check_password(PASSWORD)
     with tenant_context(tenant_a.id):
+        new = User.objects.get(username="op1")
+        assert new.tenant_id == tenant_a.id and new.check_password(PASSWORD)
         log = AuditLog.objects.get(entity_id=new.id, action="create")
     assert log.new_values["job_title"] == "operateur_production"
     assert "password" not in str(log.new_values)
@@ -98,8 +100,8 @@ def test_admin_edits_and_deactivates(admin, boss, tenant_a):
 def test_password_reset_is_logged_without_the_password(admin, tenant_a):
     user_id = create(admin).json()["id"]
     admin.patch(f"{USERS}{user_id}/", {"password": "Un-autre-mot-de-passe-2026"}, format="json")
-    assert User.objects.get(pk=user_id).check_password("Un-autre-mot-de-passe-2026")
     with tenant_context(tenant_a.id):
+        assert User.objects.get(pk=user_id).check_password("Un-autre-mot-de-passe-2026")
         log = AuditLog.objects.filter(entity_id=user_id, action="update").get()
     assert log.new_values == {"password": "(modifié)"}
 

@@ -16,9 +16,13 @@ Spécification de référence : le PRD phase 1 et son onglet « Architecture tec
 8. Écris d'abord les tests pytest des critères d'acceptation de la user story, puis le code. Toujours au moins un test d'isolation entre deux tenants par nouvel endpoint (l'objet d'un autre client renvoie 404).
 9. Si tu n'es pas sûr qu'une fonction, une option ou une API existe, dis-le au lieu de l'inventer.
 
-## Exception connue
+## Table des utilisateurs
 
-La table `tenants_user` n'a pas de RLS : la connexion doit trouver l'utilisateur avant de connaître son entreprise. Toute lecture d'utilisateurs dans l'API passe par `tenants/selectors.py`, qui filtre par `tenant_id`.
+La table `tenants_user` a la RLS comme les autres (migration `tenants/0003`), sans exception dans le test de couverture.
+- La connexion et la session ne connaissent pas encore l'entreprise : elles passent par les fonctions SQL `auth_user_by_username`, `auth_user_by_id` et `auth_username_taken` (voir `tenants/auth.py` et `tenants/selectors.py`). N'en ajoute pas d'autre et ne les utilise pas ailleurs.
+- Pour chercher un compte par identifiant hors requête (commande), utilise `tenants.selectors.find_user_by_username`. Pour vérifier qu'un identifiant est libre, `tenants.selectors.username_taken`.
+- Les lectures d'utilisateurs dans l'API passent toujours par `tenants/selectors.py`, qui garde un filtre `tenant_id` explicite.
+- Un compte plateforme (sans entreprise) se crée avec le rôle propriétaire : `docker compose exec backend sh -c 'DB_USER="$DB_OWNER_USER" DB_PASSWORD="$DB_OWNER_PASSWORD" python manage.py createsuperuser'`. Il sert seulement à l'admin Django (liste des entreprises), l'API métier le refuse.
 
 ## Base de données : deux rôles
 

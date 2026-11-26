@@ -56,4 +56,7 @@ def test_set_db_tenant_refuses_outside_transaction(tenant_a, django_db_blocker):
 
 
 def test_users_selector_filters_by_tenant(admin_a, admin_b):
-    assert list(users_of_tenant(tenant_id=admin_a.tenant_id)) == [admin_a]
+    # Meme si le contexte pose est celui d'une autre entreprise, le filtre explicite ne montre rien de plus.
+    with tenant_context(admin_a.tenant_id):
+        assert list(users_of_tenant(tenant_id=admin_a.tenant_id)) == [admin_a]
+        assert list(users_of_tenant(tenant_id=admin_b.tenant_id)) == []

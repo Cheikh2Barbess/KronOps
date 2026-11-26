@@ -5,7 +5,8 @@ from rest_framework.exceptions import PermissionDenied, ValidationError
 
 from audit.services import record_audit
 from events.services import publish_event
-from tenants import jobs
+from core.tenancy import tenant_context
+from tenants import jobs, selectors
 from tenants.models import Site, Tenant, User
 
 
@@ -24,9 +25,10 @@ def create_site(*, tenant_id, user, name, address=""):
 def create_tenant_with_admin(*, tenant_name, username, password, email=""):
     """Cree une entreprise et son premier administrateur. Reserve a l'equipe plateforme."""
     tenant = Tenant.objects.create(name=tenant_name)
-    admin = User.objects.create_user(
-        username=username, password=password, email=email, tenant=tenant, role=User.Role.ADMIN
-    )
+    with tenant_context(tenant.id):
+        admin = User.objects.create_user(
+            username=username, password=password, email=email, tenant=tenant, role=User.Role.ADMIN
+        )
     return tenant, admin
 
 
@@ -84,7 +86,7 @@ def create_user(*, tenant_id, user, username, password, role, first_name="", las
     """Ajoute un utilisateur a l'entreprise de `user` (un administrateur) : ecran Utilisateurs et commande
     create_user."""
     _check_admin(tenant_id, user)
-    if User.objects.filter(username__iexact=username).exists():
+    if selectors.username_taken(username):
         raise ValidationError({"username": ["Cet identifiant est déjà pris."]})
     job_title, job_title_other = _check_job(job_title, job_title_other)
     new = User(username=username, tenant_id=tenant_id, role=role, first_name=first_name.strip(),
