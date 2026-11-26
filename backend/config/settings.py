@@ -1,4 +1,4 @@
-"""Reglages Django de KronOps.
+"""Reglages Django de Tracalys.
 
 Tous les secrets et parametres d'environnement viennent de variables d'environnement.
 Aucun secret ne doit etre ecrit dans ce fichier.
@@ -39,7 +39,7 @@ INSTALLED_APPS = [
     "django.contrib.postgres",
     "rest_framework",
     "drf_spectacular",
-    # Apps KronOps (une app par domaine metier)
+    # Apps Tracalys (une app par domaine metier)
     "core",
     "tenants",
     "audit",
@@ -137,7 +137,7 @@ REST_FRAMEWORK = {
 }
 
 SPECTACULAR_SETTINGS = {
-    "TITLE": "API KronOps",
+    "TITLE": "API Tracalys",
     "VERSION": "1.0.0",
     "SERVE_INCLUDE_SCHEMA": False,
 }

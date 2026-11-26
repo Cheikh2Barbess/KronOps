@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 
-export const metadata = { title: "KronOps" };
+export const metadata = { title: "Tracalys" };
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (

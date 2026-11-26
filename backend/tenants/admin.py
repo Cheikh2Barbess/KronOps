@@ -16,5 +16,5 @@ class TenantAdmin(admin.ModelAdmin):
 class UserAdmin(BaseUserAdmin):
     list_display = ["username", "tenant", "role", "is_active"]
     list_filter = ["role", "tenant"]
-    fieldsets = BaseUserAdmin.fieldsets + (("KronOps", {"fields": ("tenant", "role")}),)
-    add_fieldsets = BaseUserAdmin.add_fieldsets + (("KronOps", {"fields": ("tenant", "role")}),)
+    fieldsets = BaseUserAdmin.fieldsets + (("Tracalys", {"fields": ("tenant", "role")}),)
+    add_fieldsets = BaseUserAdmin.add_fieldsets + (("Tracalys", {"fields": ("tenant", "role")}),)

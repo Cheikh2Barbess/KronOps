@@ -42,7 +42,7 @@ export default function Home() {
 
   return (
     <main>
-      <h1>KronOps</h1>
+      <h1>Tracalys</h1>
       <p>
         Service : <strong>{health ? health.status : "..."}</strong> · Base de données :{" "}
         <strong>{health ? health.database : "..."}</strong>

@@ -69,7 +69,7 @@ class User(AbstractUser):
     class Meta:
         verbose_name = "utilisateur"
         constraints = [
-            # Seul un superutilisateur de la plateforme (equipe KronOps) peut n'appartenir a aucune entreprise.
+            # Seul un superutilisateur de la plateforme (equipe Tracalys) peut n'appartenir a aucune entreprise.
             models.CheckConstraint(
                 condition=Q(tenant__isnull=False) | Q(is_superuser=True),
                 name="user_has_tenant_unless_superuser",

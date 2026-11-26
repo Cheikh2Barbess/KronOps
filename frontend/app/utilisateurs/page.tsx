@@ -131,7 +131,7 @@ function UserForm({
         E-mail professionnel <input name="email" type="email" defaultValue={user?.email} />
       </label>
       <label>
-        Rôle dans KronOps{" "}
+        Rôle dans Tracalys{" "}
         <select name="role" defaultValue={user?.role || ""} required disabled={self}>
           <option value="">Choisir...</option>
           {roles.map((o) => (

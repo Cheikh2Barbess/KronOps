@@ -124,7 +124,7 @@ def parse_articles(uploaded_file):
         except ValidationError as exc:
             messages += _flatten(exc.detail)
         if data["code"] in existing:
-            messages.append(f"Le code {data['code']} existe déjà dans KronOps.")
+            messages.append(f"Le code {data['code']} existe déjà dans Tracalys.")
         if data["code"] in seen:
             messages.append(f"Code {data['code']} en double dans le fichier (déjà ligne {seen[data['code']]}).")
         seen.setdefault(data["code"], line)
@@ -177,7 +177,7 @@ def parse_partners(uploaded_file):
             messages.append("Un partenaire est fournisseur, client, ou les deux.")
         key = data["name"].lower()
         if key in existing:
-            messages.append(f"Le partenaire « {data['name']} » existe déjà dans KronOps.")
+            messages.append(f"Le partenaire « {data['name']} » existe déjà dans Tracalys.")
         if key in seen:
             messages.append(f"Partenaire en double dans le fichier (déjà ligne {seen[key]}).")
         seen.setdefault(key, line)

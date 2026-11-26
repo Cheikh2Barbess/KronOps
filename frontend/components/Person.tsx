@@ -93,7 +93,7 @@ function PersonCard({ id, onClose }: { id: string; onClose: () => void }) {
               <tbody>
                 {row("Identifiant", card.username)}
                 {row("Poste", card.job_title_label)}
-                {row("Rôle dans KronOps", card.role_label)}
+                {row("Rôle dans Tracalys", card.role_label)}
                 {row("Téléphone pro", card.phone)}
                 {row("E-mail pro", card.email)}
                 {row("Supérieur", card.manager ? personLabel(card.manager as DirectoryEntry, card.manager.username) : "")}
