@@ -9,6 +9,7 @@ urlpatterns = [
     path("lots/<uuid:pk>/block/", views.BlockLotView.as_view(), name="lot-block"),
     path("movements/<uuid:pk>/reverse/", views.ReverseMovementView.as_view(), name="movement-reverse"),
     path("approvals/", views.ApprovalListView.as_view(), name="approval-list"),
+    path("approvals/reasons/", views.ApprovalReasonsView.as_view(), name="approval-reasons"),
     path("approvals/<uuid:pk>/", views.ApprovalDetailView.as_view(), name="approval-detail"),
     path("approvals/<uuid:pk>/approve/", views.ApproveView.as_view(), name="approval-approve"),
     path("approvals/<uuid:pk>/reject/", views.RejectView.as_view(), name="approval-reject"),

@@ -8,16 +8,17 @@ from rest_framework.response import Response
 from catalog.models import Article, Partner
 from lots.models import Lot
 from core.api import TenantAPIView
-from lots import selectors, services
+from lots import reasons, selectors, services
 from lots.api.serializers import (
     ApprovalCreateSerializer,
-    ApprovalDecisionSerializer,
     ApprovalSerializer,
     ApprovalStatusFilterSerializer,
+    BlockSerializer,
     LotDetailSerializer,
     LotSerializer,
     ReasonSerializer,
     ReceptionSerializer,
+    RejectSerializer,
     ShipmentSerializer,
     TraceLotSerializer,
     TraceQuerySerializer,
@@ -72,13 +73,13 @@ class ReceptionView(TenantAPIView):
 class BlockLotView(TenantAPIView):
     permission_classes = [IsAuthenticated, BlockLotPermission]
 
-    @extend_schema(request=ReasonSerializer, responses={200: LotDetailSerializer})
+    @extend_schema(request=BlockSerializer, responses={200: LotDetailSerializer})
     def post(self, request, pk):
         lot = selectors.lot_or_404(lot_id=pk)
-        serializer = ReasonSerializer(data=request.data)
+        serializer = BlockSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         services.block_lot(tenant_id=request.user.tenant_id, user=request.user, lot_id=lot.id,
-                           reason=serializer.validated_data["reason"])
+                           **serializer.validated_data)
         return Response(_detail(pk))
 
 
@@ -166,7 +167,7 @@ class ApprovalListView(TenantAPIView):
             raise ValidationError({"lot": ["Lot introuvable."]})
         req = services.request_approval(
             tenant_id=request.user.tenant_id, user=request.user, lot_id=lot.id, action=data["action"],
-            reason=data["reason"], quantity=data.get("quantity"),
+            reason_code=data["reason_code"], comment=data["comment"], quantity=data.get("quantity"),
         )
         return Response(ApprovalSerializer(selectors.approval_or_404(user=request.user, request_id=req.id)).data,
                         status=status.HTTP_201_CREATED)
@@ -180,34 +181,59 @@ class ApprovalDetailView(TenantAPIView):
         return Response(ApprovalSerializer(selectors.approval_or_404(user=request.user, request_id=pk)).data)
 
 
+class ApprovalReasonsView(TenantAPIView):
+    """Listes fermees des motifs, pour les menus deroulants de l'ecran."""
+
+    permission_classes = [IsAuthenticated, ApprovalPermission]
+
+    @extend_schema(responses={200: dict})
+    def get(self, request):
+        return Response({
+            "block": reasons.as_options(reasons.BLOCK),
+            "reject": reasons.as_options(reasons.REJECT),
+            **{action: reasons.as_options(codes) for action, codes in reasons.APPROVAL.items()},
+        })
+
+
 class _ApprovalDecisionView(TenantAPIView):
     permission_classes = [IsAuthenticated, ApprovalPermission]
-    decide = None
+    body = None
 
-    @extend_schema(request=ApprovalDecisionSerializer, responses={200: ApprovalSerializer})
     def post(self, request, pk):
         req = selectors.approval_or_404(user=request.user, request_id=pk)
-        serializer = ApprovalDecisionSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        type(self).decide(request, req, serializer.validated_data["comment"])
+        data = {}
+        if self.body is not None:
+            serializer = self.body(data=request.data)
+            serializer.is_valid(raise_exception=True)
+            data = serializer.validated_data
+        self.decide(request, req, data)
         return Response(ApprovalSerializer(selectors.approval_or_404(user=request.user, request_id=pk)).data)
 
 
 class ApproveView(_ApprovalDecisionView):
-    @staticmethod
-    def decide(request, req, comment):
-        services.approve_request(tenant_id=request.user.tenant_id, user=request.user, request_id=req.id,
-                                 comment=comment)
+    @extend_schema(request=None, responses={200: ApprovalSerializer})
+    def post(self, request, pk):
+        return super().post(request, pk)
+
+    def decide(self, request, req, data):
+        services.approve_request(tenant_id=request.user.tenant_id, user=request.user, request_id=req.id)
 
 
 class RejectView(_ApprovalDecisionView):
-    @staticmethod
-    def decide(request, req, comment):
-        services.reject_request(tenant_id=request.user.tenant_id, user=request.user, request_id=req.id,
-                                comment=comment)
+    body = RejectSerializer
+
+    @extend_schema(request=RejectSerializer, responses={200: ApprovalSerializer})
+    def post(self, request, pk):
+        return super().post(request, pk)
+
+    def decide(self, request, req, data):
+        services.reject_request(tenant_id=request.user.tenant_id, user=request.user, request_id=req.id, **data)
 
 
 class CancelView(_ApprovalDecisionView):
-    @staticmethod
-    def decide(request, req, comment):
+    @extend_schema(request=None, responses={200: ApprovalSerializer})
+    def post(self, request, pk):
+        return super().post(request, pk)
+
+    def decide(self, request, req, data):
         services.cancel_request(tenant_id=request.user.tenant_id, user=request.user, request_id=req.id)

@@ -73,6 +73,7 @@ def test_non_conform_reception_creates_blocked_lot(operator_client, reception_pa
     body = operator_client.post(URL, reception_payload, format="json").json()
     assert body["status"] == "bloque"
     assert body["block_reason"] == "Sacs déchirés"
+    assert body["block_code"] == "reception_non_conforme"
     with tenant_context(tenant_a.id):
         assert OutboxEvent.objects.filter(event_type="lot.blocked").exists()
 

@@ -70,7 +70,11 @@ const FIELDS: Record<string, string> = {
   type: "type",
   lot_id: "lot",
   decided_by: "décidé par",
-  decision_comment: "commentaire",
+  decision_comment: "précision du refus",
+  decision_code: "motif du refus",
+  reason_code: "motif",
+  comment: "précision",
+  block_code: "motif de blocage",
 };
 const label = (field: string) => FIELDS[field] || field;
 

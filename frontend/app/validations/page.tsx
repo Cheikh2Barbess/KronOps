@@ -26,13 +26,17 @@ type Approval = {
   article_name: string;
   base_unit: string;
   quantity: string | null;
-  reason: string;
+  reason_code: string;
+  reason_label: string;
+  comment: string;
   status: string;
   requested_by_username: string;
   requested_role: string;
   decided_by_username: string | null;
   decided_role: string;
   decided_at: string | null;
+  decision_code: string;
+  decision_label: string;
   decision_comment: string;
   created_at: string;
 };
@@ -58,6 +62,36 @@ const CAN_REQUEST: Record<string, string[]> = {
 const CAN_VALIDATE = ["admin", "qualite", "production"];
 const CAN_BLOCK = ["admin", "qualite", "production"];
 
+type Option = { code: string; label: string };
+type Reasons = Record<string, Option[]>;
+
+// Motif choisi dans une liste fermee. La precision libre n'apparait (et n'est exigee) que pour « Autre ».
+function ReasonPicker({ options, name = "reason_code" }: { options: Option[]; name?: string }) {
+  const [code, setCode] = useState("");
+  return (
+    <>
+      <label>
+        Motif{" "}
+        <select name={name} required value={code} onChange={(e) => setCode(e.target.value)}>
+          <option value="" disabled>
+            (choisir)
+          </option>
+          {options.map((o) => (
+            <option key={o.code} value={o.code}>
+              {o.label}
+            </option>
+          ))}
+        </select>
+      </label>
+      {code === "autre" && (
+        <label>
+          Précisez <input name="comment" required style={{ width: 240 }} />
+        </label>
+      )}
+    </>
+  );
+}
+
 const fmt = (n: string) => Number(n).toLocaleString("fr-FR", { maximumFractionDigits: 3 });
 const when = (d: string) => new Date(d).toLocaleString("fr-FR", { dateStyle: "short", timeStyle: "short" });
 
@@ -72,7 +106,7 @@ function errorText(e: unknown): string {
   return "Erreur.";
 }
 
-function LotPanel({ lot, me, onChanged }: { lot: Lot; me: Me; onChanged: (message: string) => void }) {
+function LotPanel({ lot, me, reasons, onChanged }: { lot: Lot; me: Me; reasons: Reasons; onChanged: (message: string) => void }) {
   const allowed = Object.keys(ACTIONS).filter((a) => CAN_REQUEST[a].includes(me.role));
   const [action, setAction] = useState(allowed[0] || "");
   const [error, setError] = useState<string | null>(null);
@@ -85,7 +119,9 @@ function LotPanel({ lot, me, onChanged }: { lot: Lot; me: Me; onChanged: (messag
     try {
       await api("approvals/", {
         method: "POST",
-        body: JSON.stringify({ action, lot: lot.id, reason: form.get("reason"), quantity: quantity || null }),
+        body: JSON.stringify({
+          action, lot: lot.id, reason_code: form.get("reason_code"), comment: form.get("comment") || "", quantity: quantity || null,
+        }),
       });
       onChanged(`Demande « ${ACTIONS[action]} » envoyée. Elle attend la validation d'une personne d'un autre rôle.`);
     } catch (e) {
@@ -98,7 +134,10 @@ function LotPanel({ lot, me, onChanged }: { lot: Lot; me: Me; onChanged: (messag
     setError(null);
     const form = new FormData(event.currentTarget);
     try {
-      await api(`lots/${lot.id}/block/`, { method: "POST", body: JSON.stringify({ reason: form.get("block_reason") }) });
+      await api(`lots/${lot.id}/block/`, {
+        method: "POST",
+        body: JSON.stringify({ reason_code: form.get("reason_code"), comment: form.get("comment") || "" }),
+      });
       onChanged(`Lot ${lot.code} bloqué.`);
     } catch (e) {
       setError(errorText(e));
@@ -114,10 +153,9 @@ function LotPanel({ lot, me, onChanged }: { lot: Lot; me: Me; onChanged: (messag
         {lot.block_reason && <> · motif du blocage : {lot.block_reason}</>}
       </p>
       {lot.status === "disponible" && CAN_BLOCK.includes(me.role) && (
-        <form onSubmit={onBlock} style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 8 }}>
-          <label>
-            Motif du blocage <input name="block_reason" required style={{ width: 280 }} />
-          </label>
+        <form onSubmit={onBlock} style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center", marginBottom: 8 }} aria-label="Bloquer">
+          <strong>Bloquer :</strong>
+          <ReasonPicker options={reasons.block || []} />
           <button type="submit">Bloquer ce lot</button>
           <span style={{ color: "#555" }}>(immédiat, sans double validation)</span>
         </form>
@@ -141,9 +179,7 @@ function LotPanel({ lot, me, onChanged }: { lot: Lot; me: Me; onChanged: (messag
                 placeholder={action === "adjust" ? "ex. -2,5 ou 3" : "ex. 2,5"} />
             </label>
           )}
-          <label>
-            Motif <input name="reason" required style={{ width: 280 }} />
-          </label>
+          <ReasonPicker key={action} options={reasons[action] || []} />
           <button type="submit">Envoyer la demande</button>
         </form>
       )}
@@ -153,16 +189,16 @@ function LotPanel({ lot, me, onChanged }: { lot: Lot; me: Me; onChanged: (messag
   );
 }
 
-function ApprovalRow({ a, me, onChanged }: { a: Approval; me: Me; onChanged: (message: string) => void }) {
+function ApprovalRow({ a, me, reasons, onChanged }: { a: Approval; me: Me; reasons: Reasons; onChanged: (message: string) => void }) {
   const [error, setError] = useState<string | null>(null);
   const [rejecting, setRejecting] = useState(false);
   const mine = a.requested_by_username === me.username;
   const canDecide = a.status === "pending" && !mine && CAN_VALIDATE.includes(me.role) && a.requested_role !== me.role;
 
-  async function decide(verb: "approve" | "reject" | "cancel", comment = "") {
+  async function decide(verb: "approve" | "reject" | "cancel", body: Record<string, unknown> = {}) {
     setError(null);
     try {
-      await api(`approvals/${a.id}/${verb}/`, { method: "POST", body: JSON.stringify({ comment }) });
+      await api(`approvals/${a.id}/${verb}/`, { method: "POST", body: JSON.stringify(body) });
       onChanged(verb === "approve" ? "Demande validée : l'action est faite." : verb === "reject" ? "Demande refusée." : "Demande annulée.");
     } catch (e) {
       setError(errorText(e));
@@ -179,7 +215,10 @@ function ApprovalRow({ a, me, onChanged }: { a: Approval; me: Me; onChanged: (me
         <small>{a.article_name}</small>
       </td>
       <td>{a.quantity !== null ? `${fmt(a.quantity)} ${a.base_unit}` : ""}</td>
-      <td>{a.reason}</td>
+      <td>
+        {a.reason_label}
+        {a.comment && <> : {a.comment}</>}
+      </td>
       <td>
         {a.requested_by_username} ({ROLES[a.requested_role] || a.requested_role})
       </td>
@@ -190,7 +229,8 @@ function ApprovalRow({ a, me, onChanged }: { a: Approval; me: Me; onChanged: (me
             <br />
             <small>
               par {a.decided_by_username} ({ROLES[a.decided_role] || a.decided_role})
-              {a.decision_comment && ` : ${a.decision_comment}`}
+              {a.decision_label && ` : ${a.decision_label}`}
+              {a.decision_comment && ` (${a.decision_comment})`}
             </small>
           </>
         )}
@@ -205,10 +245,12 @@ function ApprovalRow({ a, me, onChanged }: { a: Approval; me: Me; onChanged: (me
           <form
             onSubmit={(e) => {
               e.preventDefault();
-              decide("reject", String(new FormData(e.currentTarget).get("comment") || ""));
+              const form = new FormData(e.currentTarget);
+              decide("reject", { reason_code: form.get("reason_code"), comment: form.get("comment") || "" });
             }}
+            style={{ display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center" }}
           >
-            <input name="comment" required placeholder="Raison du refus" />{" "}
+            <ReasonPicker options={reasons.reject || []} />
             <button type="submit">Confirmer le refus</button>{" "}
             <button type="button" onClick={() => setRejecting(false)}>
               Annuler
@@ -231,6 +273,7 @@ export default function Validations() {
   const [message, setMessage] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [reasons, setReasons] = useState<Reasons>({});
 
   const loadApprovals = useCallback(() => {
     api<Approval[]>(showAll ? "approvals/" : "approvals/?status=pending")
@@ -244,6 +287,9 @@ export default function Validations() {
   useEffect(() => {
     if (me) loadApprovals();
   }, [me, loadApprovals]);
+  useEffect(() => {
+    if (me && me.role !== "lecture") api<Reasons>("approvals/reasons/").then(setReasons).catch(() => setReasons({}));
+  }, [me]);
 
   async function findLots(term: string) {
     if (!term.trim()) return setLots(null);
@@ -297,7 +343,7 @@ export default function Validations() {
       </form>
       {lots !== null && lots.length === 0 && <p>Aucun lot trouvé.</p>}
       {lots?.slice(0, 10).map((lot) => (
-        <LotPanel key={lot.id} lot={lot} me={me} onChanged={changed} />
+        <LotPanel key={lot.id} lot={lot} me={me} reasons={reasons} onChanged={changed} />
       ))}
 
       <h2>{showAll ? "Toutes les demandes" : "Demandes en attente"}</h2>
@@ -323,7 +369,7 @@ export default function Validations() {
           </thead>
           <tbody>
             {approvals.map((a) => (
-              <ApprovalRow key={a.id} a={a} me={me} onChanged={changed} />
+              <ApprovalRow key={a.id} a={a} me={me} reasons={reasons} onChanged={changed} />
             ))}
           </tbody>
         </table>

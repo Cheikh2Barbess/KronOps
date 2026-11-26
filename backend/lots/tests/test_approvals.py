@@ -55,12 +55,17 @@ def lot(tenant_a, admin_a, ref_a):
 @pytest.fixture
 def blocked_lot(tenant_a, admin_a, lot):
     with tenant_context(tenant_a.id):
-        services.block_lot(tenant_id=tenant_a.id, user=admin_a, lot_id=lot.id, reason="Moisissures")
+        services.block_lot(tenant_id=tenant_a.id, user=admin_a, lot_id=lot.id, reason_code="contamination")
     return lot
 
 
+# Un motif valable pour chaque action (listes fermees de lots/reasons.py).
+CODE = {"release": "analyse_conforme", "destroy": "contamination", "scrap": "casse", "adjust": "ecart_inventaire"}
+
+
 def ask(client, action, lot, **extra):
-    return client.post(URL, {"action": action, "lot": str(lot.id), "reason": "Contrôle", **extra}, format="json")
+    payload = {"action": action, "lot": str(lot.id), "reason_code": CODE[action], **extra}
+    return client.post(URL, payload, format="json")
 
 
 def lot_state(tenant_a, lot):
@@ -128,9 +133,25 @@ def test_operator_and_reader_cannot_validate(c, blocked_lot):
     assert c["lecture"].post(f"{URL}{request_id}/approve/", {}, format="json").status_code == 403
 
 
-def test_reason_is_required(c, blocked_lot):
-    r = c["qualite"].post(URL, {"action": "release", "lot": str(blocked_lot.id), "reason": " "}, format="json")
-    assert r.status_code == 400
+def test_reason_comes_from_the_list_of_the_action(c, blocked_lot):
+    post = lambda **p: c["qualite"].post(URL, {"action": "release", "lot": str(blocked_lot.id), **p}, format="json")
+    assert post().status_code == 400  # motif obligatoire
+    assert post(reason_code="n_importe_quoi").status_code == 400
+    # Code valable pour un rebut, pas pour un deblocage.
+    assert post(reason_code="casse").status_code == 400
+    # « Autre » exige une precision.
+    assert post(reason_code="autre").status_code == 400
+    r = post(reason_code="autre", comment="Accord écrit du client")
+    assert r.status_code == 201
+    assert r.json()["reason_label"] == "Autre (préciser)"
+    assert r.json()["comment"] == "Accord écrit du client"
+
+
+def test_reason_lists_endpoint(c):
+    body = c["operateur"].get(f"{URL}reasons/").json()
+    assert {"block", "reject", "release", "destroy", "scrap", "adjust"} <= set(body)
+    assert {"code": "autre", "label": "Autre (préciser)"} in body["block"]
+    assert c["lecture"].get(f"{URL}reasons/").status_code == 403
 
 
 def test_one_pending_request_per_lot_and_action(c, blocked_lot):
@@ -226,12 +247,15 @@ def test_validated_scrap_cannot_be_undone_alone(c, tenant_a, users, lot):
 # Refus et annulation ------------------------------------------------------
 
 
-def test_reject_needs_a_comment_and_changes_nothing(c, tenant_a, blocked_lot):
+def test_reject_needs_a_coded_reason_and_changes_nothing(c, tenant_a, blocked_lot):
     request_id = ask(c["qualite"], "release", blocked_lot).json()["id"]
-    assert c["production"].post(f"{URL}{request_id}/reject/", {"comment": ""}, format="json").status_code == 400
-    r = c["production"].post(f"{URL}{request_id}/reject/", {"comment": "Analyse labo pas reçue"}, format="json")
+    reject = lambda **p: c["production"].post(f"{URL}{request_id}/reject/", p, format="json")
+    assert reject().status_code == 400
+    assert reject(reason_code="autre").status_code == 400
+    r = reject(reason_code="verification_en_cours")
     assert r.status_code == 200
     assert r.json()["status"] == "rejected"
+    assert r.json()["decision_label"] == "Vérification encore en cours"
     assert lot_state(tenant_a, blocked_lot)[0] == "bloque"
     # Une demande decidee ne se valide plus.
     assert c["admin"].post(f"{URL}{request_id}/approve/", {}, format="json").status_code == 400

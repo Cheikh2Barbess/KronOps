@@ -31,7 +31,8 @@ class Lot(TenantModel):
     expiry_date = models.DateField("DLC ou DDM", null=True, blank=True)
     production_date = models.DateField("date d'entrée ou de fabrication")
     status = models.CharField("statut", max_length=20, choices=Status.choices, default=Status.DISPONIBLE)
-    block_reason = models.TextField("motif de blocage", blank=True)
+    block_code = models.CharField("code du motif de blocage", max_length=40, blank=True)
+    block_reason = models.TextField("motif de blocage (libellé et précision)", blank=True)
     reception_temperature_c = models.DecimalField(
         "température à réception (°C)", max_digits=5, decimal_places=1, null=True, blank=True
     )
@@ -142,7 +143,8 @@ class ApprovalRequest(TenantModel):
     quantity = models.DecimalField(
         "quantité (unité de base, signée pour un ajustement)", max_digits=18, decimal_places=3, null=True, blank=True
     )
-    reason = models.TextField("motif")
+    reason_code = models.CharField("motif (code)", max_length=40)
+    comment = models.TextField("précision", blank=True)
     status = models.CharField("statut", max_length=20, choices=Status.choices, default=Status.PENDING)
     requested_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="+")
     requested_role = models.CharField("rôle du demandeur", max_length=20)
@@ -151,7 +153,8 @@ class ApprovalRequest(TenantModel):
     )
     decided_role = models.CharField("rôle du validateur", max_length=20, blank=True)
     decided_at = models.DateTimeField("date de décision", null=True, blank=True)
-    decision_comment = models.TextField("commentaire de décision", blank=True)
+    decision_code = models.CharField("motif du refus (code)", max_length=40, blank=True)
+    decision_comment = models.TextField("précision du refus", blank=True)
     movement = models.OneToOneField(
         Movement, on_delete=models.PROTECT, null=True, blank=True, related_name="approval",
         help_text="Mouvement cree par la validation (rebut, ajustement, destruction).",

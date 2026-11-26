@@ -14,7 +14,7 @@ from rest_framework.exceptions import PermissionDenied, ValidationError
 from audit.services import record_audit
 from catalog.models import Article
 from events.services import publish_event
-from lots import selectors
+from lots import reasons, selectors
 from lots.models import ApprovalRequest, Lot, LotLink, Movement
 from tenants.models import User
 
@@ -65,7 +65,7 @@ def _lot_values(lot):
         "code": lot.code, "article_id": str(lot.article_id), "status": lot.status,
         "supplier_id": str(lot.supplier_id) if lot.supplier_id else None, "supplier_lot_code": lot.supplier_lot_code,
         "date_type": lot.date_type, "expiry_date": lot.expiry_date.isoformat() if lot.expiry_date else None,
-        "block_reason": lot.block_reason,
+        "block_code": lot.block_code, "block_reason": lot.block_reason,
     }
 
 
@@ -104,6 +104,7 @@ def create_lot(*, tenant_id, user, article, quantity, entry_type, supplier=None,
         supplier_lot_code=supplier_lot_code, date_type=date_type if expiry_date else "", expiry_date=expiry_date,
         production_date=day, reception_temperature_c=temperature_c, reception_visual_ok=visual_ok,
         status=Lot.Status.BLOQUE if block_reason else Lot.Status.DISPONIBLE, block_reason=block_reason,
+        block_code=reasons.RECEPTION_NON_CONFORME if block_reason else "",
     )
     _movement(
         tenant_id=tenant_id, user=user, lot=lot, movement_type=entry_type, quantity=quantity, partner=supplier,
@@ -178,17 +179,19 @@ def record_exit(*, tenant_id, user, lot_id, movement_type, quantity, partner=Non
 
 
 @transaction.atomic
-def block_lot(*, tenant_id, user, lot_id, reason):
-    if not reason or not reason.strip():
-        raise ValidationError({"reason": ["Motif obligatoire."]})
+def block_lot(*, tenant_id, user, lot_id, reason_code, comment=""):
+    """Blocage immediat, motif choisi dans une liste fermee (commentaire seulement pour « Autre »)."""
+    reason_code, comment = reasons.check(reasons.BLOCK, reason_code, comment)
     lot = _lock(lot_id)
     if lot.status != Lot.Status.DISPONIBLE:
         raise ValidationError({"lot": [f"Le lot {lot.code} est déjà {lot.get_status_display().lower()}."]})
     old = _lot_values(lot)
-    lot.status, lot.block_reason = Lot.Status.BLOQUE, reason.strip()
-    lot.save(update_fields=["status", "block_reason", "updated_at"])
+    lot.status, lot.block_code = Lot.Status.BLOQUE, reason_code
+    lot.block_reason = reasons.text(reasons.BLOCK, reason_code, comment)
+    lot.save(update_fields=["status", "block_code", "block_reason", "updated_at"])
     record_audit(tenant_id=tenant_id, user=user, action="block", entity=lot, old_values=old, new_values=_lot_values(lot))
-    publish_event(tenant_id=tenant_id, event_type="lot.blocked", payload={"lot_id": str(lot.id), "reason": lot.block_reason})
+    publish_event(tenant_id=tenant_id, event_type="lot.blocked",
+                  payload={"lot_id": str(lot.id), "reason_code": reason_code})
     return lot
 
 
@@ -273,8 +276,9 @@ CAN_VALIDATE = {R.ADMIN, R.QUALITE, R.PRODUCTION}
 def _approval_values(req):
     return {
         "action": req.action, "lot_id": str(req.lot_id), "quantity": str(req.quantity) if req.quantity is not None else None,
-        "reason": req.reason, "status": req.status,
-        "decided_by": req.decided_by.username if req.decided_by_id else None, "decision_comment": req.decision_comment,
+        "reason_code": req.reason_code, "comment": req.comment, "status": req.status,
+        "decided_by": req.decided_by.username if req.decided_by_id else None,
+        "decision_code": req.decision_code, "decision_comment": req.decision_comment,
     }
 
 
@@ -298,11 +302,10 @@ def _check_action_possible(*, lot, action, quantity):
 
 
 @transaction.atomic
-def request_approval(*, tenant_id, user, lot_id, action, reason, quantity=None):
+def request_approval(*, tenant_id, user, lot_id, action, reason_code, comment="", quantity=None):
     if user.role not in CAN_REQUEST.get(action, set()):
         raise PermissionDenied("Votre rôle ne permet pas de demander cette action.")
-    if not reason or not reason.strip():
-        raise ValidationError({"reason": ["Motif obligatoire."]})
+    reason_code, comment = reasons.check(reasons.APPROVAL[action], reason_code, comment)
     lot = _lock(lot_id)
     if action in (A.RELEASE, A.DESTROY):
         quantity = None
@@ -311,7 +314,7 @@ def request_approval(*, tenant_id, user, lot_id, action, reason, quantity=None):
     if action in (A.RELEASE, A.DESTROY) and pending.exists():
         raise ValidationError({"lot": ["Une demande identique est déjà en attente pour ce lot."]})
     req = ApprovalRequest.objects.create(
-        tenant_id=tenant_id, action=action, lot=lot, quantity=quantity, reason=reason.strip(),
+        tenant_id=tenant_id, action=action, lot=lot, quantity=quantity, reason_code=reason_code, comment=comment,
         requested_by=user, requested_role=user.role,
     )
     record_audit(tenant_id=tenant_id, user=user, action="request", entity=req, new_values=_approval_values(req))
@@ -338,17 +341,21 @@ def _check_validator(req, user):
         raise ValidationError({"request": ["La validation doit venir d'un utilisateur d'un autre rôle que le demandeur."]})
 
 
-def _decide(req, user, status, comment):
+def _decide(req, user, status, code="", comment=""):
     old = _approval_values(req)
     req.status, req.decided_by, req.decided_role = status, user, user.role
-    req.decided_at, req.decision_comment = timezone.now(), comment
-    req.save(update_fields=["status", "decided_by", "decided_role", "decided_at", "decision_comment", "movement",
-                            "updated_at"])
+    req.decided_at, req.decision_code, req.decision_comment = timezone.now(), code, comment
+    req.save(update_fields=["status", "decided_by", "decided_role", "decided_at", "decision_code",
+                            "decision_comment", "movement", "updated_at"])
     return old
 
 
+def approval_reason_text(req):
+    return reasons.text(reasons.APPROVAL[req.action], req.reason_code, req.comment)
+
+
 @transaction.atomic
-def approve_request(*, tenant_id, user, request_id, comment=""):
+def approve_request(*, tenant_id, user, request_id):
     """Valide la demande ET execute l'action, dans la meme transaction."""
     req = _lock_pending(request_id)
     _check_validator(req, user)
@@ -356,11 +363,11 @@ def approve_request(*, tenant_id, user, request_id, comment=""):
     _check_action_possible(lot=lot, action=req.action, quantity=req.quantity)
     # Le mouvement est enregistre au moment de la validation, donc au nom du validateur. Le demandeur
     # reste visible dans le motif et dans la demande liee.
-    who, reason = user, f"{req.reason} (demandé par {req.requested_by.username})"
+    who, reason = user, f"{approval_reason_text(req)} (demandé par {req.requested_by.username})"
     if req.action == A.RELEASE:
         old = _lot_values(lot)
-        lot.status, lot.block_reason = Lot.Status.DISPONIBLE, ""
-        lot.save(update_fields=["status", "block_reason", "updated_at"])
+        lot.status, lot.block_code, lot.block_reason = Lot.Status.DISPONIBLE, "", ""
+        lot.save(update_fields=["status", "block_code", "block_reason", "updated_at"])
         record_audit(tenant_id=tenant_id, user=user, action="release", entity=lot, old_values=old,
                      new_values=_lot_values(lot))
         publish_event(tenant_id=tenant_id, event_type="lot.released", payload={"lot_id": str(lot.id)})
@@ -383,7 +390,7 @@ def approve_request(*, tenant_id, user, request_id, comment=""):
                                  quantity=req.quantity, reason=reason)
     if req.action in (A.SCRAP, A.ADJUST, A.DESTROY) and selectors.lot_balance(lot.id) == 0:
         publish_event(tenant_id=tenant_id, event_type="lot.depleted", payload={"lot_id": str(lot.id)})
-    old = _decide(req, user, ApprovalRequest.Status.APPROVED, comment.strip())
+    old = _decide(req, user, ApprovalRequest.Status.APPROVED)
     record_audit(tenant_id=tenant_id, user=user, action="approve", entity=req, old_values=old,
                  new_values=_approval_values(req))
     publish_event(tenant_id=tenant_id, event_type="approval.approved", payload={"approval_id": str(req.id)})
@@ -391,12 +398,11 @@ def approve_request(*, tenant_id, user, request_id, comment=""):
 
 
 @transaction.atomic
-def reject_request(*, tenant_id, user, request_id, comment):
-    if not comment or not comment.strip():
-        raise ValidationError({"comment": ["Expliquez le refus."]})
+def reject_request(*, tenant_id, user, request_id, reason_code, comment=""):
+    reason_code, comment = reasons.check(reasons.REJECT, reason_code, comment)
     req = _lock_pending(request_id)
     _check_validator(req, user)
-    old = _decide(req, user, ApprovalRequest.Status.REJECTED, comment.strip())
+    old = _decide(req, user, ApprovalRequest.Status.REJECTED, reason_code, comment)
     record_audit(tenant_id=tenant_id, user=user, action="reject", entity=req, old_values=old,
                  new_values=_approval_values(req))
     publish_event(tenant_id=tenant_id, event_type="approval.rejected", payload={"approval_id": str(req.id)})

@@ -118,8 +118,8 @@ docker compose exec backend python manage.py create_user --admin patron --userna
 
 Rôles possibles : `admin`, `qualite`, `production`, `operateur`, `lecture`. Ensuite, sur http://localhost:3000/validations :
 
-1. Connecté en `prod1`, cherche un lot et bloque-le (le blocage est immédiat).
-2. Connecté en `qualite1`, demande « Débloquer le lot » avec un motif. Le lot reste bloqué : ta propre demande ne peut pas être validée par toi.
+1. Connecté en `prod1`, cherche un lot et bloque-le en choisissant un motif dans la liste (le blocage est immédiat).
+2. Connecté en `qualite1`, demande « Débloquer le lot » en choisissant un motif. Le lot reste bloqué : ta propre demande ne peut pas être validée par toi.
 3. Connecté en `prod1` (ou `patron`), clique « Valider » : le lot redevient disponible. Le journal d'audit garde la demande et la validation.
 
 Règles (matrice des droits du PRD) : déblocage et destruction sont demandés par la Qualité, le rebut par la Qualité, la Production ou un opérateur, l'ajustement par la Qualité ou la Production. Admin, Qualité et Production valident, jamais leur propre demande ni celle d'une personne du même rôle.
