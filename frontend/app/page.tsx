@@ -57,6 +57,11 @@ export default function Home() {
           <p>
             <a href="/referentiels">Référentiels : articles, fournisseurs et clients</a>
           </p>
+          {["admin", "qualite", "production", "lecture"].includes(me.role) && (
+            <p>
+              <a href="/tracabilite">Traçabilité : recherche amont et aval</a>
+            </p>
+          )}
           {["admin", "qualite"].includes(me.role) && (
             <p>
               <a href="/journal">Journal d&apos;audit</a>

@@ -1,5 +1,5 @@
 # Environnement de developpement local : PostgreSQL + API Django + ecran Next.js.
-# Lancement : docker compose up --build   puis ouvrir http://localhost:3000
+# Lancement : docker compose up --build -d --wait   puis ouvrir http://localhost:3000
 services:
   db:
     image: postgres:17
@@ -43,6 +43,14 @@ services:
     depends_on:
       db:
         condition: service_healthy
+    # « Sain » seulement quand les migrations sont jouees et que l'API repond.
+    # « docker compose up -d --wait » attend ce moment avant de rendre la main.
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/v1/health/', timeout=3)"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 180s
 
   frontend:
     build:
@@ -56,7 +64,8 @@ services:
     ports:
       - "127.0.0.1:3000:3000"
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
 
 volumes:
   pgdata:

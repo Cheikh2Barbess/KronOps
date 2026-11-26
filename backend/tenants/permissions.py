@@ -40,3 +40,28 @@ class AuditReadPermission(BasePermission):
     def has_permission(self, request, view):
         # Les vues du journal n'ont que GET : toute ecriture repond 405.
         return has_role(request.user, R.ADMIN, R.QUALITE)
+
+
+class LotPermission(BasePermission):
+    """Lots : lecture pour tous les roles. Reception (ecriture) : Admin, Qualite, Production, Operateur."""
+
+    message = "Votre rôle ne permet pas cette action."
+
+    def has_permission(self, request, view):
+        if request.method in SAFE_METHODS:
+            return has_role(request.user, *R.values)
+        return has_role(request.user, R.ADMIN, R.QUALITE, R.PRODUCTION, R.OPERATEUR)
+
+
+class BlockLotPermission(BasePermission):
+    message = "Seuls les rôles Admin, Qualité et Production peuvent bloquer un lot."
+
+    def has_permission(self, request, view):
+        return has_role(request.user, R.ADMIN, R.QUALITE, R.PRODUCTION)
+
+
+class TraceabilityPermission(BasePermission):
+    message = "La recherche amont/aval n'est pas ouverte à votre rôle."
+
+    def has_permission(self, request, view):
+        return has_role(request.user, R.ADMIN, R.QUALITE, R.PRODUCTION, R.LECTURE)
