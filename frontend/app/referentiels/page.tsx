@@ -6,6 +6,8 @@
 import { FormEvent, useEffect, useState } from "react";
 import { api, ApiError } from "@/lib/api";
 
+const UNIT_LABEL: Record<string, string> = { kg: "kg", l: "L", unite: "unité(s)" };
+
 type Article = {
   id: string;
   code: string;
@@ -98,7 +100,7 @@ function ArticleEditor({
     <form onSubmit={onSubmit} style={{ display: "grid", gap: 8, padding: 12, border: "1px solid #888", margin: "8px 0" }}>
       {article ? (
         <strong>
-          Modifier {article.code} (unité de base {article.base_unit}, non modifiable)
+          Modifier {article.code} (unité de base {UNIT_LABEL[article.base_unit] || article.base_unit}, non modifiable)
         </strong>
       ) : (
         <>
@@ -536,7 +538,7 @@ function ArticleSection({ allergens }: { allergens: Allergen[] }) {
                       <td>{a.code}</td>
                       <td>{a.name}</td>
                       <td>{TYPES[a.article_type] || a.article_type}</td>
-                      <td>{a.base_unit}</td>
+                      <td>{UNIT_LABEL[a.base_unit] || a.base_unit}</td>
                       <td>{a.shelf_life_days ?? ""}</td>
                       <td>
                         <AllergenSummary article={a} allergens={allergens} />

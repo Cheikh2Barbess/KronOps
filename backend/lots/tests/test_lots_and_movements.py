@@ -53,14 +53,18 @@ def test_lot_cannot_be_deleted_through_api(client_a, lot):
 def test_block_lot_with_reason(client_a, lot):
     url = f"/api/v1/lots/{lot['id']}/block/"
     assert client_a.post(url, {}, format="json").status_code == 400  # motif obligatoire
-    response = client_a.post(url, {"reason": "Suspicion de contamination"}, format="json")
+    assert client_a.post(url, {"reason_code": "pas_dans_la_liste"}, format="json").status_code == 400
+    assert client_a.post(url, {"reason_code": "autre"}, format="json").status_code == 400  # precision obligatoire
+    response = client_a.post(url, {"reason_code": "temperature", "comment": "8 °C au camion"}, format="json")
     assert response.status_code == 200
     assert response.json()["status"] == "bloque"
-    assert client_a.post(url, {"reason": "encore"}, format="json").status_code == 400  # deja bloque
+    assert response.json()["block_code"] == "temperature"
+    assert response.json()["block_reason"] == "Température non respectée : 8 °C au camion"
+    assert client_a.post(url, {"reason_code": "temperature"}, format="json").status_code == 400  # deja bloque
 
 
 def test_operator_cannot_block(operator_client, lot):
-    assert operator_client.post(f"/api/v1/lots/{lot['id']}/block/", {"reason": "x"}, format="json").status_code == 403
+    assert operator_client.post(f"/api/v1/lots/{lot['id']}/block/", {"reason_code": "temperature"}, format="json").status_code == 403
 
 
 def test_reverse_reception_with_reason(client_a, lot):
@@ -104,7 +108,7 @@ def test_stock_never_goes_negative(lot, tenant_a, admin_a):
 def test_blocked_lot_cannot_leave(client_a, lot, tenant_a, admin_a):
     from rest_framework.exceptions import ValidationError
 
-    client_a.post(f"/api/v1/lots/{lot['id']}/block/", {"reason": "Analyse en cours"}, format="json")
+    client_a.post(f"/api/v1/lots/{lot['id']}/block/", {"reason_code": "analyse_non_conforme"}, format="json")
     with pytest.raises(ValidationError):
         with tenant_context(tenant_a.id):
             services.record_exit(
@@ -132,7 +136,7 @@ def test_expired_lot_cannot_leave(client_a, reception_payload, tenant_a, admin_a
 
 def test_lot_of_other_tenant_is_404(client_b, lot):
     assert client_b.get(f"/api/v1/lots/{lot['id']}/").status_code == 404
-    assert client_b.post(f"/api/v1/lots/{lot['id']}/block/", {"reason": "x"}, format="json").status_code == 404
+    assert client_b.post(f"/api/v1/lots/{lot['id']}/block/", {"reason_code": "temperature"}, format="json").status_code == 404
     movement_id = lot["movements"][0]["id"]
-    assert client_b.post(f"/api/v1/movements/{movement_id}/reverse/", {"reason": "x"}, format="json").status_code == 404
+    assert client_b.post(f"/api/v1/movements/{movement_id}/reverse/", {"reason_code": "temperature"}, format="json").status_code == 404
     assert client_b.get("/api/v1/lots/").json() == []

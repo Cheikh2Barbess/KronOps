@@ -2,8 +2,8 @@
 
 from rest_framework import serializers
 
-from lots import services
-from lots.models import Lot, Movement
+from lots import reasons, services
+from lots.models import ApprovalRequest, Lot, Movement
 
 
 class ReceptionSerializer(serializers.Serializer):
@@ -54,7 +54,7 @@ class LotSerializer(serializers.ModelSerializer):
         model = Lot
         fields = [
             "id", "code", "article", "article_code", "article_name", "base_unit", "supplier", "supplier_name",
-            "supplier_lot_code", "date_type", "expiry_date", "production_date", "status", "block_reason",
+            "supplier_lot_code", "date_type", "expiry_date", "production_date", "status", "block_code", "block_reason",
             "balance", "depleted", "expired", "reception_temperature_c", "reception_visual_ok", "created_at",
         ]
 
@@ -108,3 +108,53 @@ class TraceQuerySerializer(serializers.Serializer):
         if not data.get("lot") and not data.get("search"):
             raise serializers.ValidationError("Indiquer un lot (lot=...) ou un code (search=...).")
         return data
+
+
+class BlockSerializer(serializers.Serializer):
+    reason_code = serializers.ChoiceField(choices=list(reasons.BLOCK))
+    comment = serializers.CharField(required=False, allow_blank=True, default="", help_text="Obligatoire pour « autre ».")
+
+
+class ApprovalCreateSerializer(serializers.Serializer):
+    action = serializers.ChoiceField(choices=ApprovalRequest.Action.choices)
+    lot = serializers.UUIDField()
+    quantity = serializers.DecimalField(
+        max_digits=15, decimal_places=3, required=False, allow_null=True,
+        help_text="Unité de base de l'article. Rebut : positive. Ajustement : positive (ajout) ou négative (retrait).",
+    )
+    reason_code = serializers.ChoiceField(choices=reasons.ALL_APPROVAL_CODES, help_text="Voir approvals/reasons/.")
+    comment = serializers.CharField(required=False, allow_blank=True, default="", help_text="Obligatoire pour « autre ».")
+
+
+class RejectSerializer(serializers.Serializer):
+    reason_code = serializers.ChoiceField(choices=list(reasons.REJECT))
+    comment = serializers.CharField(required=False, allow_blank=True, default="", help_text="Obligatoire pour « autre ».")
+
+
+class ApprovalStatusFilterSerializer(serializers.Serializer):
+    status = serializers.ChoiceField(choices=ApprovalRequest.Status.choices, required=False)
+
+
+class ApprovalSerializer(serializers.ModelSerializer):
+    lot_code = serializers.CharField(source="lot.code", read_only=True)
+    lot_status = serializers.CharField(source="lot.status", read_only=True)
+    article_name = serializers.CharField(source="lot.article.name", read_only=True)
+    base_unit = serializers.CharField(source="lot.article.base_unit", read_only=True)
+    requested_by_username = serializers.CharField(source="requested_by.username", read_only=True)
+    decided_by_username = serializers.CharField(source="decided_by.username", default=None, read_only=True)
+    reason_label = serializers.SerializerMethodField()
+    decision_label = serializers.SerializerMethodField()
+
+    class Meta:
+        model = ApprovalRequest
+        fields = [
+            "id", "action", "lot", "lot_code", "lot_status", "article_name", "base_unit", "quantity", "reason_code",
+            "reason_label", "comment", "status", "requested_by_username", "requested_role", "decided_by_username",
+            "decided_role", "decided_at", "decision_code", "decision_label", "decision_comment", "created_at",
+        ]
+
+    def get_reason_label(self, obj):
+        return reasons.APPROVAL[obj.action].get(obj.reason_code, obj.reason_code)
+
+    def get_decision_label(self, obj):
+        return reasons.REJECT.get(obj.decision_code, obj.decision_code) if obj.decision_code else ""

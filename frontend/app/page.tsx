@@ -62,6 +62,11 @@ export default function Home() {
               <a href="/tracabilite">Traçabilité : recherche amont et aval</a>
             </p>
           )}
+          {["admin", "qualite", "production", "operateur"].includes(me.role) && (
+            <p>
+              <a href="/validations">Validations : déblocage, destruction, rebut, ajustement</a>
+            </p>
+          )}
           {["admin", "qualite"].includes(me.role) && (
             <p>
               <a href="/journal">Journal d&apos;audit</a>

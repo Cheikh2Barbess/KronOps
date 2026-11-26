@@ -65,3 +65,13 @@ class TraceabilityPermission(BasePermission):
 
     def has_permission(self, request, view):
         return has_role(request.user, R.ADMIN, R.QUALITE, R.PRODUCTION, R.LECTURE)
+
+
+class ApprovalPermission(BasePermission):
+    """Double validation (US-20) : ouverte a tous les roles sauf Lecture. Le detail (qui demande quoi,
+    qui valide) est verifie par lots/services.py selon la matrice des droits du PRD."""
+
+    message = "La double validation n'est pas ouverte à votre rôle."
+
+    def has_permission(self, request, view):
+        return has_role(request.user, R.ADMIN, R.QUALITE, R.PRODUCTION, R.OPERATEUR)

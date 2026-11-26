@@ -5,6 +5,8 @@
 import { FormEvent, useState } from "react";
 import { api, ApiError } from "@/lib/api";
 
+const UNIT_LABEL: Record<string, string> = { kg: "kg", l: "L", unite: "unité(s)" };
+
 type Lot = {
   id: string;
   code: string;
@@ -64,7 +66,7 @@ function LotTable({ lots }: { lots: Lot[] }) {
             </td>
             <td>{STATUS[l.status] || l.status}</td>
             <td>
-              {fmt(l.balance)} {l.base_unit}
+              {fmt(l.balance)} {UNIT_LABEL[l.base_unit] || l.base_unit}
             </td>
           </tr>
         ))}

@@ -26,12 +26,21 @@ const ACTIONS: Record<string, string> = {
   update: "Modification",
   import: "Import",
   cancel: "Annulation",
+  block: "Blocage",
+  request: "Demande",
+  approve: "Validation",
+  reject: "Refus",
+  release: "Déblocage",
+  destroy: "Destruction",
 };
 const ENTITY_TYPES: Record<string, string> = {
   "catalog.article": "Articles",
   "catalog.partner": "Fournisseurs et clients",
   "catalog.unitconversion": "Conversions d'unités",
   "tenants.site": "Sites",
+  "lots.lot": "Lots",
+  "lots.movement": "Mouvements",
+  "lots.approvalrequest": "Demandes de double validation",
 };
 
 // Libelles francais des champs enregistres dans le journal.
@@ -53,6 +62,19 @@ const FIELDS: Record<string, string> = {
   email: "e-mail",
   unit_name: "unité",
   factor: "facteur",
+  status: "statut",
+  block_reason: "motif de blocage",
+  action: "action",
+  quantity: "quantité",
+  reason: "motif",
+  type: "type",
+  lot_id: "lot",
+  decided_by: "décidé par",
+  decision_comment: "précision du refus",
+  decision_code: "motif du refus",
+  reason_code: "motif",
+  comment: "précision",
+  block_code: "motif de blocage",
 };
 const label = (field: string) => FIELDS[field] || field;
 

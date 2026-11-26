@@ -7,7 +7,8 @@ from django.db.models import DecimalField, Q, Sum, Value
 from django.db.models.functions import Coalesce
 from django.http import Http404
 
-from lots.models import Lot, Movement
+from lots.models import ApprovalRequest, Lot, Movement
+from tenants.models import User
 
 ZERO = Value(Decimal("0"), output_field=DecimalField(max_digits=18, decimal_places=3))
 # Garde-fou contre une boucle de genealogie (ne devrait jamais arriver).
@@ -98,3 +99,20 @@ def upstream(*, origins):
     for lot in found:
         lot.depth = depths[lot.id]
     return found
+
+
+def approval_requests(*, user, status=None):
+    """Demandes de double validation. Un operateur ne voit que les siennes."""
+    qs = ApprovalRequest.objects.select_related("lot__article", "requested_by", "decided_by").order_by("-created_at")
+    if user.role == User.Role.OPERATEUR:
+        qs = qs.filter(requested_by=user)
+    if status:
+        qs = qs.filter(status=status)
+    return qs
+
+
+def approval_or_404(*, user, request_id):
+    req = approval_requests(user=user).filter(pk=request_id).first()
+    if req is None:
+        raise Http404
+    return req
