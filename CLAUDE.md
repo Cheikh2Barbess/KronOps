@@ -1,6 +1,6 @@
-# KronOps : règles pour l'assistant IA
+# Tracalys : règles pour l'assistant IA
 
-KronOps est un MES SaaS pour l'agroalimentaire (PME, Côte d'Ivoire en premier), priorité à la traçabilité des lots.
+Tracalys (anciennement KronOps) est un MES SaaS pour l'agroalimentaire (PME, Côte d'Ivoire en premier), priorité à la traçabilité des lots.
 Stack phase 1 : Django 5.2 LTS + Django REST Framework + PostgreSQL 17, front Next.js, Docker Compose.
 Spécification de référence : le PRD phase 1 et son onglet « Architecture technique » (gelés). En cas de doute, le PRD prime sur ton intuition.
 

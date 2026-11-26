@@ -379,7 +379,7 @@ export default function Receptions() {
       </p>
       <h1>Réceptions</h1>
       <p>
-        Enregistrez chaque livraison à son arrivée. KronOps crée le lot, calcule la quantité dans l&apos;unité de l&apos;article et
+        Enregistrez chaque livraison à son arrivée. Tracalys crée le lot, calcule la quantité dans l&apos;unité de l&apos;article et
         démarre la traçabilité. Vous êtes <strong>{me.username}</strong>.
       </p>
       {message && <p style={{ background: "#e8f5e9", padding: 8, fontSize: "1.1em" }}>{message}</p>}

@@ -1,6 +1,8 @@
-# KronOps
+# Tracalys
 
 Logiciel de pilotage de production (MES) pour l'agroalimentaire, vendu en abonnement.
+
+> Le produit s'appelait KronOps jusqu'au 26 novembre 2026. Le dépôt GitHub, le dossier local et les noms techniques internes (base `kronops`, rôles `kronops_owner` et `kronops_app`) gardent l'ancien nom pour ne pas casser les installations existantes.
 Ce dépôt contient le socle technique et les premières fonctions métier : les **référentiels** (US-02), l'écran du **journal d'audit** (US-03) et le **cœur des lots** : réception, mouvements en insertion seule, recherche amont et aval (US-14, US-15). Les lots, ordres de fabrication et expéditions ne sont pas encore écrits.
 
 ## Ce que le socle contient déjà
@@ -20,7 +22,7 @@ Ce dépôt contient le socle technique et les premières fonctions métier : les
 | Lots et traçabilité | Réception d'une livraison fournisseur guidée par listes, avec annulation tant que le lot n'a pas servi (écran : http://localhost:3000/receptions), stock par lot calculé depuis les mouvements, jamais négatif, blocage avec motif, annulation par contre-mouvement. Les motifs (blocage, réception non conforme, annulation, double validation) se choisissent dans des listes fermées, visibles sur http://localhost:3000/api/v1/approvals/reasons/ une fois connecté. Recherche aval (lot fournisseur vers lots produits et clients livrés) et amont. Écran : http://localhost:3000/tracabilite |
 | Tests automatiques | 118 tests, dont l'isolation entre clients et l'immuabilité de l'audit |
 
-## Lancer KronOps sur ton ordinateur
+## Lancer Tracalys sur ton ordinateur
 
 ### 1. Installer les outils (une seule fois)
 
@@ -57,7 +59,7 @@ Pour arrêter : `Ctrl + C` dans le terminal, puis `docker compose down`.
 
 ### 5. Créer une première entreprise et son administrateur
 
-Dans un **deuxième** terminal, dans le dossier KronOps :
+Dans un **deuxième** terminal, dans le dossier du projet (`KronOps`) :
 
 ```
 docker compose exec backend python manage.py create_tenant --name "Ma Société" --admin patron
