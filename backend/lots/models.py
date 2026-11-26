@@ -83,6 +83,8 @@ class Movement(TenantModel):
         "self", on_delete=models.PROTECT, null=True, blank=True, related_name="reversed_by"
     )
     reason = models.TextField("motif", blank=True)
+    # Code du motif quand il vient d'une liste fermee (annulation, double validation). Vide pour les anciennes lignes.
+    reason_code = models.CharField("motif (code)", max_length=40, blank=True)
     occurred_at = models.DateTimeField("date réelle déclarée")
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, null=True, related_name="+")
 

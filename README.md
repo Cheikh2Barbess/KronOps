@@ -17,7 +17,7 @@ Ce dépôt contient le socle technique et les premières fonctions métier : les
 | Documentation de l'API | Générée automatiquement, visible sur `/api/v1/docs/` |
 | Référentiels (US-02) | Articles (matière, emballage, semi-fini, produit fini), allergènes obligatoires pour les matières (14 allergènes UE), conversions d'unités (1 sac = 25 kg), fournisseurs et clients, import CSV tout ou rien. Écran : http://localhost:3000/referentiels |
 | Journal d'audit (US-03) | Qui a créé, modifié ou importé quoi, quand, avec l'ancienne et la nouvelle valeur. Filtres par objet, action, utilisateur et dates. Lecture seule, rôles Admin et Qualité. Écran : http://localhost:3000/journal |
-| Lots et traçabilité | Réception d'un lot fournisseur (API seulement, l'écran attend les maquettes testées avec les opérateurs), stock par lot calculé depuis les mouvements, jamais négatif, blocage avec motif, annulation par contre-mouvement. Recherche aval (lot fournisseur vers lots produits et clients livrés) et amont. Écran : http://localhost:3000/tracabilite |
+| Lots et traçabilité | Réception d'un lot fournisseur (API seulement, l'écran attend les maquettes testées avec les opérateurs), stock par lot calculé depuis les mouvements, jamais négatif, blocage avec motif, annulation par contre-mouvement. Les motifs (blocage, réception non conforme, annulation, double validation) se choisissent dans des listes fermées, visibles sur http://localhost:3000/api/v1/approvals/reasons/ une fois connecté. Recherche aval (lot fournisseur vers lots produits et clients livrés) et amont. Écran : http://localhost:3000/tracabilite |
 | Tests automatiques | 118 tests, dont l'isolation entre clients et l'immuabilité de l'audit |
 
 ## Lancer KronOps sur ton ordinateur
@@ -135,6 +135,7 @@ Règles (matrice des droits du PRD) : déblocage et destruction sont demandés p
 | `role ... already exists`, `database "kronops" does not exist` ou `password authentication failed` en boucle | La base a été créée avec une ancienne version de `.env` | `docker compose down -v` puis `docker compose up --build` |
 | Après un `git pull`, l'écran ne change pas, même avec `Ctrl + F5` | Sous Windows et Mac, Docker Desktop ne prévient pas toujours Next.js qu'un fichier a changé (limite documentée par Next.js) | `docker compose restart frontend`, attends « Ready » dans le terminal, puis recharge la page |
 | Passer d'une page à l'autre prend plusieurs secondes | Le mode développement compile les pages à la demande | Lance l'écran en mode production (étape 8) |
+| Après un `git pull`, l'API ne montre pas une nouveauté (nouveau champ, nouvelle liste) | Même cause côté serveur : sous Windows, le serveur Django ne voit pas les fichiers modifiés et garde l'ancien code | `docker compose restart backend` puis `docker compose up -d --wait`. Le redémarrage joue aussi les nouvelles migrations |
 | `relation "..." does not exist` juste après `docker compose up -d` | L'API joue encore ses migrations | Attends 30 secondes et relance la commande, ou utilise `docker compose up --build -d --wait` |
 | La page affiche « Service : injoignable » | L'API n'a pas fini de démarrer | Attends 30 secondes et recharge la page |
 | Tout est cassé et tu veux repartir de zéro | | `docker compose down -v` puis `docker compose up --build`. **Attention : efface toutes les données locales.** |

@@ -71,17 +71,22 @@ def test_reverse_reception_with_reason(client_a, lot):
     movement_id = lot["movements"][0]["id"]
     url = f"/api/v1/movements/{movement_id}/reverse/"
     assert client_a.post(url, {}, format="json").status_code == 400  # motif obligatoire
-    response = client_a.post(url, {"reason": "Erreur de saisie"}, format="json")
+    assert client_a.post(url, {"reason": "texte libre"}, format="json").status_code == 400  # plus de texte libre
+    assert client_a.post(url, {"reason_code": "autre"}, format="json").status_code == 400  # precision obligatoire
+    response = client_a.post(url, {"reason_code": "mauvaise_quantite"}, format="json")
     assert response.status_code == 201, response.json()
     detail = client_a.get(f"/api/v1/lots/{lot['id']}/").json()
+    reversal = detail["movements"][1]
+    assert reversal["reason_code"] == "mauvaise_quantite"
+    assert reversal["reason"] == "Mauvaise quantité"
     assert Decimal(detail["balance"]) == 0
     assert detail["depleted"] is True
     types = [m["movement_type"] for m in detail["movements"]]
     assert types == ["reception", "annulation"]
     # Un mouvement ne s'annule qu'une fois, et une annulation ne s'annule pas.
-    assert client_a.post(url, {"reason": "encore"}, format="json").status_code == 400
+    assert client_a.post(url, {"reason_code": "doublon"}, format="json").status_code == 400
     reversal_id = detail["movements"][1]["id"]
-    assert client_a.post(f"/api/v1/movements/{reversal_id}/reverse/", {"reason": "x"}, format="json").status_code == 400
+    assert client_a.post(f"/api/v1/movements/{reversal_id}/reverse/", {"reason_code": "doublon"}, format="json").status_code == 400
 
 
 def test_cannot_reverse_reception_once_lot_was_used(client_a, lot, tenant_a, admin_a, ref_a):
@@ -90,7 +95,7 @@ def test_cannot_reverse_reception_once_lot_was_used(client_a, lot, tenant_a, adm
             tenant_id=tenant_a.id, user=admin_a, lot_id=lot["id"], movement_type="consommation", quantity=Decimal("10")
         )
     movement_id = lot["movements"][0]["id"]
-    response = client_a.post(f"/api/v1/movements/{movement_id}/reverse/", {"reason": "x"}, format="json")
+    response = client_a.post(f"/api/v1/movements/{movement_id}/reverse/", {"reason_code": "erreur_saisie"}, format="json")
     assert response.status_code == 400
 
 
@@ -138,5 +143,5 @@ def test_lot_of_other_tenant_is_404(client_b, lot):
     assert client_b.get(f"/api/v1/lots/{lot['id']}/").status_code == 404
     assert client_b.post(f"/api/v1/lots/{lot['id']}/block/", {"reason_code": "temperature"}, format="json").status_code == 404
     movement_id = lot["movements"][0]["id"]
-    assert client_b.post(f"/api/v1/movements/{movement_id}/reverse/", {"reason_code": "temperature"}, format="json").status_code == 404
+    assert client_b.post(f"/api/v1/movements/{movement_id}/reverse/", {"reason_code": "erreur_saisie"}, format="json").status_code == 404
     assert client_b.get("/api/v1/lots/").json() == []

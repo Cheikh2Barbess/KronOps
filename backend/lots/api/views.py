@@ -16,9 +16,9 @@ from lots.api.serializers import (
     BlockSerializer,
     LotDetailSerializer,
     LotSerializer,
-    ReasonSerializer,
     ReceptionSerializer,
     RejectSerializer,
+    ReverseSerializer,
     ShipmentSerializer,
     TraceLotSerializer,
     TraceQuerySerializer,
@@ -89,15 +89,15 @@ class ReverseMovementView(TenantAPIView):
 
     permission_classes = [IsAuthenticated, LotPermission]
 
-    @extend_schema(request=ReasonSerializer, responses={201: LotDetailSerializer})
+    @extend_schema(request=ReverseSerializer, responses={201: LotDetailSerializer})
     def post(self, request, pk):
         movement = selectors.movement_or_404(movement_id=pk)
         if request.user.role == User.Role.OPERATEUR and movement.user_id != request.user.id:
             return Response({"detail": "Un opérateur ne peut annuler que ses propres saisies."}, status=403)
-        serializer = ReasonSerializer(data=request.data)
+        serializer = ReverseSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         services.reverse_movement(tenant_id=request.user.tenant_id, user=request.user, movement_id=movement.id,
-                                  reason=serializer.validated_data["reason"])
+                                  **serializer.validated_data)
         return Response(_detail(movement.lot_id), status=status.HTTP_201_CREATED)
 
 
@@ -191,6 +191,8 @@ class ApprovalReasonsView(TenantAPIView):
         return Response({
             "block": reasons.as_options(reasons.BLOCK),
             "reject": reasons.as_options(reasons.REJECT),
+            "reception": reasons.as_options(reasons.RECEPTION),
+            "reversal": reasons.as_options(reasons.REVERSAL),
             **{action: reasons.as_options(codes) for action, codes in reasons.APPROVAL.items()},
         })
 
