@@ -92,6 +92,7 @@ Format du fichier articles : séparateur `;` ou `,`, une ligne d'en-tête. Colon
 | `Variable d'environnement manquante` | Le fichier `.env` n'existe pas ou est incomplet | Refais l'étape 3 |
 | `ERREUR DE CONFIGURATION (fichier .env)` | Un nom a été modifié ou un mot de passe contient autre chose que des lettres et des chiffres | Corrige `.env` comme indiqué, puis `docker compose down -v` et `docker compose up --build` |
 | `role ... already exists`, `database "kronops" does not exist` ou `password authentication failed` en boucle | La base a été créée avec une ancienne version de `.env` | `docker compose down -v` puis `docker compose up --build` |
+| Après un `git pull`, l'écran ne change pas, même avec `Ctrl + F5` | Sous Windows et Mac, Docker Desktop ne prévient pas toujours Next.js qu'un fichier a changé (limite documentée par Next.js) | `docker compose restart frontend`, attends « Ready » dans le terminal, puis recharge la page |
 | La page affiche « Service : injoignable » | L'API n'a pas fini de démarrer | Attends 30 secondes et recharge la page |
 | Tout est cassé et tu veux repartir de zéro | | `docker compose down -v` puis `docker compose up --build`. **Attention : efface toutes les données locales.** |
 
