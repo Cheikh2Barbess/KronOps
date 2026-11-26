@@ -9,12 +9,12 @@ import datetime
 from decimal import Decimal
 
 from django.core.management.base import BaseCommand, CommandError
-from django.db import DEFAULT_DB_ALIAS, connections, transaction
-from django.db.migrations.executor import MigrationExecutor
+from django.db import transaction
 
 from catalog import services as catalog
 from catalog.models import Article, Partner, UnitConversion
 from catalog.selectors import allergen_codes
+from core.management.checks import ensure_database_migrated
 from core.tenancy import tenant_context
 from lots import services
 from lots.models import Lot
@@ -29,13 +29,7 @@ class Command(BaseCommand):
         parser.add_argument("--admin", required=True, help="Identifiant d'un administrateur de l'entreprise")
 
     def handle(self, *args, admin, **options):
-        # Juste apres « docker compose up -d », le conteneur peut encore jouer ses migrations.
-        executor = MigrationExecutor(connections[DEFAULT_DB_ALIAS])
-        if executor.migration_plan(executor.loader.graph.leaf_nodes()):
-            raise CommandError(
-                "La base n'est pas encore à jour : l'API est en train de démarrer. "
-                "Attends 30 secondes (ou « docker compose logs backend » jusqu'à « Demarrage de l'API ») et relance."
-            )
+        ensure_database_migrated()
         user = find_user_by_username(admin)
         if user is None or user.role != User.Role.ADMIN or user.tenant_id is None:
             raise CommandError(f"Aucun administrateur « {admin} ».")

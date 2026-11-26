@@ -176,3 +176,15 @@ def test_platform_staff_session_is_refused_by_business_api():
     client = APIClient()
     client.post("/admin/login/", {"username": "equipe", "password": PASSWORD, "next": "/admin/"})
     assert client.get("/api/v1/sites/").status_code == 403
+
+
+def test_commands_refuse_to_run_while_migrations_are_pending(monkeypatch):
+    """Lancee pendant le redemarrage du backend, la commande donne une consigne claire."""
+    from django.core.management import CommandError
+    from django.db.migrations.executor import MigrationExecutor
+
+    monkeypatch.setattr(MigrationExecutor, "migration_plan", lambda self, targets: ["en attente"])
+    with pytest.raises(CommandError, match="pas encore à jour"):
+        call_command("create_tenant", name="X", admin="x", password=PASSWORD)
+    with pytest.raises(CommandError, match="pas encore à jour"):
+        call_command("create_user", admin="x", username="y", role="qualite", password=PASSWORD)
