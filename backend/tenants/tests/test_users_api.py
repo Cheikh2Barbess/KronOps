@@ -153,3 +153,10 @@ def test_users_of_another_company_are_invisible(admin, tenant_b):
     assert admin.patch(f"{USERS}{stranger.id}/", {"phone": "1"}, format="json").status_code == 404
     assert "etranger" not in str(admin.get(USERS).json())
     assert "etranger" not in str(admin.get(DIRECTORY).json())
+
+
+def test_journal_names_the_modified_user(admin):
+    user_id = create(admin).json()["id"]
+    admin.patch(f"{USERS}{user_id}/", {"phone": "0101010101"}, format="json")
+    line = admin.get("/api/v1/audit/", {"action": "update", "entity_type": "tenants.user"}).json()["results"][0]
+    assert line["subject"] == "op1"
