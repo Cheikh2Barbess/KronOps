@@ -28,7 +28,7 @@ def articles(*, q=None, article_type=None, storage=None, active=None, allergen=N
         Prefetch("allergen_rows", queryset=ArticleAllergen.objects.select_related("allergen"))
     ).order_by("code")
     if q:
-        qs = qs.filter(Q(code__icontains=q) | Q(name__icontains=q))
+        qs = qs.filter(Q(code__unaccent__icontains=q) | Q(name__unaccent__icontains=q))
     if article_type:
         qs = qs.filter(article_type__in=_as_list(article_type))
     if storage:
@@ -74,7 +74,8 @@ def partners(*, q=None, role=None, city=None, active=None):
     qs = Partner.objects.order_by("name")
     if q:
         qs = qs.filter(
-            Q(name__icontains=q) | Q(contact_name__icontains=q) | Q(address__icontains=q) | Q(city__icontains=q)
+            Q(name__unaccent__icontains=q) | Q(contact_name__unaccent__icontains=q)
+            | Q(address__unaccent__icontains=q) | Q(city__unaccent__icontains=q)
         )
     if role == "supplier":
         qs = qs.filter(is_supplier=True)

@@ -149,3 +149,10 @@ def test_city_list_is_isolated_per_tenant(client_a, client_b, partners_a):
 
 def test_operator_cannot_read_city_list(operator_client):
     assert operator_client.get("/api/v1/partners/cities/").status_code == 403
+
+
+def test_search_ignores_accents_and_case(client_a, catalog_a, partners_a):
+    assert names(client_a.get("/api/v1/articles/?q=farine de ble")) == ["MP-FAR"]
+    assert names(client_a.get("/api/v1/articles/?q=BLÉ")) == ["MP-FAR"]
+    assert names(client_a.get("/api/v1/partners/?q=cooperative soubre")) == ["Coopérative Soubré"]
+    assert names(client_a.get("/api/v1/partners/?q=traore&city=Bouaké")) == ["Grossiste Bouaké"]

@@ -183,11 +183,24 @@ const TYPES: Record<string, string> = {
   fini: "Produit fini",
 };
 
-function allergenSummary(a: Article): string {
-  if (!a.allergens) return a.article_type === "matiere" ? "Non déclaré" : "";
-  const present = Object.entries(a.allergens).filter(([, p]) => p !== "absent");
-  if (present.length === 0) return "Aucun";
-  return present.map(([code, p]) => (p === "contient" ? code : `${code} (traces)`)).join(", ");
+// Nom court d'un allergene : « Fruits à coque » plutot que la liste officielle entre parentheses.
+const shortName = (name: string) => name.replace(/\s*\(.*\)\s*$/, "");
+
+// Tous les allergenes de l'article, avec leur nom : « contient » en gras, puis les traces.
+function AllergenSummary({ article, allergens }: { article: Article; allergens: Allergen[] }) {
+  if (!article.allergens) return <>{article.article_type === "emballage" ? "" : "Non déclaré"}</>;
+  const name = (code: string) => shortName(allergens.find((x) => x.code === code)?.name || code);
+  const entries = Object.entries(article.allergens);
+  const contains = entries.filter(([, p]) => p === "contient").map(([c]) => name(c));
+  const traces = entries.filter(([, p]) => p === "peut_contenir").map(([c]) => name(c));
+  if (contains.length === 0 && traces.length === 0) return <>Aucun</>;
+  return (
+    <>
+      {contains.length > 0 && <strong>Contient : {contains.join(", ")}</strong>}
+      {contains.length > 0 && traces.length > 0 && <br />}
+      {traces.length > 0 && <em>Traces possibles : {traces.join(", ")}</em>}
+    </>
+  );
 }
 
 function ImportForm({ path, model, onDone }: { path: string; model: string; onDone: () => void }) {
@@ -384,6 +397,18 @@ function ArticleSection({ allergens }: { allergens: Allergen[] }) {
   const [editing, setEditing] = useState<string | null>(null);
   const reload = () => setReloadKey((k) => k + 1);
   const apiFilters = { ...filters, presence: filters.allergen ? filters.presence : "" };
+  const contains = filters.allergen ? filters.allergen.split(",") : [];
+  const free = filters.allergen_free ? filters.allergen_free.split(",") : [];
+  const allergenCount = contains.length + free.length + (filters.has_allergen ? 1 : 0);
+  // Une case « contient » et « sans » pour le meme allergene s'excluent.
+  const toggleAllergen = (key: "allergen" | "allergen_free", code: string) =>
+    setFilters((f) => {
+      const other = key === "allergen" ? "allergen_free" : "allergen";
+      const list = f[key] ? f[key].split(",") : [];
+      const next = list.includes(code) ? list.filter((c) => c !== code) : [...list, code];
+      const otherList = (f[other] ? f[other].split(",") : []).filter((c) => c !== code);
+      return { ...f, [key]: next.join(","), [other]: otherList.join(",") };
+    });
   const { data, error, page, setPage } = usePagedList<Article>("articles/", apiFilters, reloadKey);
   const set = (name: keyof typeof EMPTY_ARTICLE_FILTERS) => (e: { target: { value: string } }) =>
     setFilters((f) => ({ ...f, [name]: e.target.value }));
@@ -427,39 +452,6 @@ function ArticleSection({ allergens }: { allergens: Allergen[] }) {
           </select>
         </label>
         <label>
-          Contient l&apos;allergène{" "}
-          <select name="allergen" value={filters.allergen} onChange={set("allergen")}>
-            <option value="">(peu importe)</option>
-            {allergens.map((al) => (
-              <option key={al.code} value={al.code}>{al.name}</option>
-            ))}
-          </select>
-        </label>
-        {filters.allergen && (
-          <select name="presence" value={filters.presence} onChange={set("presence")} aria-label="Présence">
-            <option value="present">contient ou traces</option>
-            <option value="contient">contient</option>
-            <option value="peut_contenir">traces seulement</option>
-          </select>
-        )}
-        <label>
-          Sans l&apos;allergène{" "}
-          <select name="allergen_free" value={filters.allergen_free} onChange={set("allergen_free")}>
-            <option value="">(peu importe)</option>
-            {allergens.map((al) => (
-              <option key={al.code} value={al.code}>{al.name}</option>
-            ))}
-          </select>
-        </label>
-        <label>
-          Allergènes{" "}
-          <select name="has_allergen" value={filters.has_allergen} onChange={set("has_allergen")}>
-            <option value="">Tous les articles</option>
-            <option value="true">Au moins un allergène</option>
-            <option value="false">Aucun allergène (déclaré)</option>
-          </select>
-        </label>
-        <label>
           Statut{" "}
           <select name="article_active" value={filters.active} onChange={set("active")}>
             <option value="">Actifs et inactifs</option>
@@ -469,6 +461,47 @@ function ArticleSection({ allergens }: { allergens: Allergen[] }) {
         </label>
         <button type="button" onClick={() => setFilters(EMPTY_ARTICLE_FILTERS)}>Effacer les filtres</button>
       </div>
+
+      <details style={{ ...filterBar, display: "block" }} open={allergenCount > 0}>
+        <summary>
+          Allergènes{allergenCount > 0 ? ` (${allergenCount} filtre(s))` : ""}
+        </summary>
+        <p style={{ margin: "6px 0" }}>
+          <label>
+            <input type="checkbox" name="has_allergen_true" checked={filters.has_allergen === "true"}
+              onChange={(e) => setFilters((f) => ({ ...f, has_allergen: e.target.checked ? "true" : "" }))} />{" "}
+            Au moins un allergène
+          </label>{" "}
+          <label style={{ marginLeft: 12 }}>
+            <input type="checkbox" name="has_allergen_false" checked={filters.has_allergen === "false"}
+              onChange={(e) => setFilters((f) => ({ ...f, has_allergen: e.target.checked ? "false" : "" }))} />{" "}
+            Aucun allergène (articles déclarés)
+          </label>
+          <label style={{ marginLeft: 12 }}>
+            <input type="checkbox" name="with_traces" checked={filters.presence === "present"}
+              onChange={(e) => setFilters((f) => ({ ...f, presence: e.target.checked ? "present" : "contient" }))} />{" "}
+            Compter aussi les traces (« peut contenir »)
+          </label>
+        </p>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: "2px 24px" }}>
+          {allergens.map((al) => (
+            <div key={al.code} style={{ display: "flex", gap: 8, alignItems: "center" }}>
+              <span style={{ flex: 1 }} title={al.name}>{shortName(al.name)}</span>
+              <label>
+                <input type="checkbox" name={`contains_${al.code}`} checked={contains.includes(al.code)}
+                  onChange={() => toggleAllergen("allergen", al.code)} /> contient
+              </label>
+              <label>
+                <input type="checkbox" name={`free_${al.code}`} checked={free.includes(al.code)}
+                  onChange={() => toggleAllergen("allergen_free", al.code)} /> sans
+              </label>
+            </div>
+          ))}
+        </div>
+        <p style={{ margin: "6px 0", color: "#555" }}>
+          Plusieurs « contient » : l&apos;un ou l&apos;autre. Plusieurs « sans » : aucun d&apos;eux. « Sans » ne retient que les articles dont les allergènes sont déclarés.
+        </p>
+      </details>
 
       {error ? (
         <p role="alert">{error}</p>
@@ -505,7 +538,9 @@ function ArticleSection({ allergens }: { allergens: Allergen[] }) {
                       <td>{TYPES[a.article_type] || a.article_type}</td>
                       <td>{a.base_unit}</td>
                       <td>{a.shelf_life_days ?? ""}</td>
-                      <td>{allergenSummary(a)}</td>
+                      <td>
+                        <AllergenSummary article={a} allergens={allergens} />
+                      </td>
                       <td>
                         <button onClick={() => setEditing(a.id)}>Modifier</button>
                       </td>
