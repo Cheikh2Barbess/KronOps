@@ -3,7 +3,7 @@
 from rest_framework import serializers
 
 from lots import services
-from lots.models import Lot, Movement
+from lots.models import ApprovalRequest, Lot, Movement
 
 
 class ReceptionSerializer(serializers.Serializer):
@@ -108,3 +108,38 @@ class TraceQuerySerializer(serializers.Serializer):
         if not data.get("lot") and not data.get("search"):
             raise serializers.ValidationError("Indiquer un lot (lot=...) ou un code (search=...).")
         return data
+
+
+class ApprovalCreateSerializer(serializers.Serializer):
+    action = serializers.ChoiceField(choices=ApprovalRequest.Action.choices)
+    lot = serializers.UUIDField()
+    quantity = serializers.DecimalField(
+        max_digits=15, decimal_places=3, required=False, allow_null=True,
+        help_text="Unité de base de l'article. Rebut : positive. Ajustement : positive (ajout) ou négative (retrait).",
+    )
+    reason = serializers.CharField(allow_blank=True, trim_whitespace=True)
+
+
+class ApprovalDecisionSerializer(serializers.Serializer):
+    comment = serializers.CharField(required=False, allow_blank=True, default="")
+
+
+class ApprovalStatusFilterSerializer(serializers.Serializer):
+    status = serializers.ChoiceField(choices=ApprovalRequest.Status.choices, required=False)
+
+
+class ApprovalSerializer(serializers.ModelSerializer):
+    lot_code = serializers.CharField(source="lot.code", read_only=True)
+    lot_status = serializers.CharField(source="lot.status", read_only=True)
+    article_name = serializers.CharField(source="lot.article.name", read_only=True)
+    base_unit = serializers.CharField(source="lot.article.base_unit", read_only=True)
+    requested_by_username = serializers.CharField(source="requested_by.username", read_only=True)
+    decided_by_username = serializers.CharField(source="decided_by.username", default=None, read_only=True)
+
+    class Meta:
+        model = ApprovalRequest
+        fields = [
+            "id", "action", "lot", "lot_code", "lot_status", "article_name", "base_unit", "quantity", "reason",
+            "status", "requested_by_username", "requested_role", "decided_by_username", "decided_role",
+            "decided_at", "decision_comment", "created_at",
+        ]

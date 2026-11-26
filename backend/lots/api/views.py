@@ -6,9 +6,14 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from catalog.models import Article, Partner
+from lots.models import Lot
 from core.api import TenantAPIView
 from lots import selectors, services
 from lots.api.serializers import (
+    ApprovalCreateSerializer,
+    ApprovalDecisionSerializer,
+    ApprovalSerializer,
+    ApprovalStatusFilterSerializer,
     LotDetailSerializer,
     LotSerializer,
     ReasonSerializer,
@@ -18,7 +23,7 @@ from lots.api.serializers import (
     TraceQuerySerializer,
 )
 from tenants.models import User
-from tenants.permissions import BlockLotPermission, LotPermission, TraceabilityPermission
+from tenants.permissions import ApprovalPermission, BlockLotPermission, LotPermission, TraceabilityPermission
 
 
 def _detail(lot_id):
@@ -133,3 +138,76 @@ class UpstreamView(TenantAPIView):
             "origins": LotSerializer(origins, many=True).data,
             "lots": TraceLotSerializer(selectors.upstream(origins=origins), many=True).data,
         })
+
+
+# Double validation (US-20) -------------------------------------------------
+
+
+class ApprovalListView(TenantAPIView):
+    """Demandes de deblocage, destruction, rebut et ajustement. Les regles de role sont dans services.py."""
+
+    permission_classes = [IsAuthenticated, ApprovalPermission]
+
+    @extend_schema(parameters=[ApprovalStatusFilterSerializer], responses={200: ApprovalSerializer(many=True)})
+    def get(self, request):
+        filters = ApprovalStatusFilterSerializer(data=request.query_params)
+        filters.is_valid(raise_exception=True)
+        qs = selectors.approval_requests(user=request.user, status=filters.validated_data.get("status"))
+        return Response(ApprovalSerializer(qs[:500], many=True).data)
+
+    @extend_schema(request=ApprovalCreateSerializer, responses={201: ApprovalSerializer})
+    def post(self, request):
+        serializer = ApprovalCreateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+        # Lot d'un autre client : invisible (RLS), donc « introuvable ».
+        lot = Lot.objects.filter(pk=data["lot"]).first()
+        if lot is None:
+            raise ValidationError({"lot": ["Lot introuvable."]})
+        req = services.request_approval(
+            tenant_id=request.user.tenant_id, user=request.user, lot_id=lot.id, action=data["action"],
+            reason=data["reason"], quantity=data.get("quantity"),
+        )
+        return Response(ApprovalSerializer(selectors.approval_or_404(user=request.user, request_id=req.id)).data,
+                        status=status.HTTP_201_CREATED)
+
+
+class ApprovalDetailView(TenantAPIView):
+    permission_classes = [IsAuthenticated, ApprovalPermission]
+
+    @extend_schema(responses={200: ApprovalSerializer})
+    def get(self, request, pk):
+        return Response(ApprovalSerializer(selectors.approval_or_404(user=request.user, request_id=pk)).data)
+
+
+class _ApprovalDecisionView(TenantAPIView):
+    permission_classes = [IsAuthenticated, ApprovalPermission]
+    decide = None
+
+    @extend_schema(request=ApprovalDecisionSerializer, responses={200: ApprovalSerializer})
+    def post(self, request, pk):
+        req = selectors.approval_or_404(user=request.user, request_id=pk)
+        serializer = ApprovalDecisionSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        type(self).decide(request, req, serializer.validated_data["comment"])
+        return Response(ApprovalSerializer(selectors.approval_or_404(user=request.user, request_id=pk)).data)
+
+
+class ApproveView(_ApprovalDecisionView):
+    @staticmethod
+    def decide(request, req, comment):
+        services.approve_request(tenant_id=request.user.tenant_id, user=request.user, request_id=req.id,
+                                 comment=comment)
+
+
+class RejectView(_ApprovalDecisionView):
+    @staticmethod
+    def decide(request, req, comment):
+        services.reject_request(tenant_id=request.user.tenant_id, user=request.user, request_id=req.id,
+                                comment=comment)
+
+
+class CancelView(_ApprovalDecisionView):
+    @staticmethod
+    def decide(request, req, comment):
+        services.cancel_request(tenant_id=request.user.tenant_id, user=request.user, request_id=req.id)

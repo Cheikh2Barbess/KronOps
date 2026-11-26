@@ -119,3 +119,55 @@ class LotLink(TenantModel):
             models.Index(fields=["tenant", "parent_lot"]),
             models.Index(fields=["tenant", "child_lot"]),
         ]
+
+
+class ApprovalRequest(TenantModel):
+    """US-20 Double validation : demande d'une action sensible, executee seulement apres la validation
+    d'un 2e utilisateur d'un autre role. Jamais supprimee : son statut evolue, chaque etape est auditee."""
+
+    class Action(models.TextChoices):
+        RELEASE = "release", "Débloquer le lot"
+        DESTROY = "destroy", "Détruire le lot"
+        SCRAP = "scrap", "Rebut ou perte"
+        ADJUST = "adjust", "Ajustement de stock"
+
+    class Status(models.TextChoices):
+        PENDING = "pending", "En attente"
+        APPROVED = "approved", "Validée"
+        REJECTED = "rejected", "Refusée"
+        CANCELLED = "cancelled", "Annulée"
+
+    action = models.CharField("action", max_length=20, choices=Action.choices)
+    lot = models.ForeignKey(Lot, on_delete=models.PROTECT, related_name="approval_requests")
+    quantity = models.DecimalField(
+        "quantité (unité de base, signée pour un ajustement)", max_digits=18, decimal_places=3, null=True, blank=True
+    )
+    reason = models.TextField("motif")
+    status = models.CharField("statut", max_length=20, choices=Status.choices, default=Status.PENDING)
+    requested_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="+")
+    requested_role = models.CharField("rôle du demandeur", max_length=20)
+    decided_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.PROTECT, null=True, blank=True, related_name="+"
+    )
+    decided_role = models.CharField("rôle du validateur", max_length=20, blank=True)
+    decided_at = models.DateTimeField("date de décision", null=True, blank=True)
+    decision_comment = models.TextField("commentaire de décision", blank=True)
+    movement = models.OneToOneField(
+        Movement, on_delete=models.PROTECT, null=True, blank=True, related_name="approval",
+        help_text="Mouvement cree par la validation (rebut, ajustement, destruction).",
+    )
+
+    class Meta:
+        verbose_name = "demande de double validation"
+        constraints = [
+            # Garde-fou en base : le validateur n'est jamais le demandeur.
+            models.CheckConstraint(
+                condition=Q(decided_by__isnull=True) | ~Q(decided_by=F("requested_by")) | Q(status="cancelled"),
+                name="approval_not_self_decided",
+            ),
+            models.CheckConstraint(
+                condition=Q(action__in=["release", "destroy"]) | Q(quantity__isnull=False),
+                name="approval_quantity_required",
+            ),
+        ]
+        indexes = [models.Index(fields=["tenant", "status", "created_at"])]

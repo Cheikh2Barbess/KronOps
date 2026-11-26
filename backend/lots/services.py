@@ -9,15 +9,17 @@ from decimal import Decimal
 
 from django.db import transaction
 from django.utils import timezone
-from rest_framework.exceptions import ValidationError
+from rest_framework.exceptions import PermissionDenied, ValidationError
 
 from audit.services import record_audit
 from catalog.models import Article
 from events.services import publish_event
 from lots import selectors
-from lots.models import Lot, LotLink, Movement
+from lots.models import ApprovalRequest, Lot, LotLink, Movement
+from tenants.models import User
 
 THOUSANDTH = Decimal("0.001")
+DOUBLE_VALIDATED_TYPES = {Movement.Type.REBUT, Movement.Type.AJUSTEMENT, Movement.Type.DESTRUCTION}
 
 
 def to_base_quantity(*, article, quantity, unit):
@@ -156,8 +158,11 @@ def record_exit(*, tenant_id, user, lot_id, movement_type, quantity, partner=Non
     if quantity <= 0:
         raise ValidationError({"quantity": ["La quantité doit être strictement positive."]})
     lot = _lock(lot_id)
-    if lot.status != Lot.Status.DISPONIBLE and movement_type != Movement.Type.DESTRUCTION:
-        raise ValidationError({"lot": [f"Le lot {lot.code} est {lot.get_status_display().lower()}."]})
+    if lot.status == Lot.Status.DETRUIT:
+        raise ValidationError({"lot": [f"Le lot {lot.code} est détruit."]})
+    # Un lot bloque ne part ni en production ni chez un client. Rebut et destruction restent possibles.
+    if lot.status == Lot.Status.BLOQUE and movement_type not in (Movement.Type.REBUT, Movement.Type.DESTRUCTION):
+        raise ValidationError({"lot": [f"Le lot {lot.code} est bloqué."]})
     if is_expired(lot) and movement_type in (Movement.Type.CONSOMMATION, Movement.Type.EXPEDITION):
         raise ValidationError({"lot": [f"Le lot {lot.code} est périmé (DLC dépassée)."]})
     balance = selectors.lot_balance(lot.id)
@@ -196,6 +201,13 @@ def reverse_movement(*, tenant_id, user, movement_id, reason):
     if movement is None:
         raise ValidationError({"movement": ["Mouvement introuvable."]})
     lot = _lock(movement.lot_id)
+    if movement.movement_type in DOUBLE_VALIDATED_TYPES:
+        # Sinon une seule personne pourrait defaire ce que deux ont valide (US-20).
+        raise ValidationError({"movement": [
+            "Un rebut, un ajustement ou une destruction ne s'annule pas seul : faites une demande d'ajustement."
+        ]})
+    if lot.status == Lot.Status.DETRUIT:
+        raise ValidationError({"movement": [f"Le lot {lot.code} est détruit."]})
     if movement.movement_type == Movement.Type.ANNULATION:
         raise ValidationError({"movement": ["Une annulation ne s'annule pas. Saisissez un nouveau mouvement."]})
     if Movement.objects.filter(reverses=movement).exists():
@@ -241,3 +253,165 @@ def link_lots(*, tenant_id, user, parent, child):
         payload={"parent_lot_id": str(parent.id), "child_lot_id": str(child.id)},
     )
     return link
+
+
+# Double validation (US-20) ---------------------------------------------------
+# Matrice des droits du PRD : qui peut DEMANDER chaque action, qui peut VALIDER.
+# Deblocage et destruction : la Qualite demande (cycle de vie du lot).
+
+A = ApprovalRequest.Action
+R = User.Role
+CAN_REQUEST = {
+    A.RELEASE: {R.QUALITE},
+    A.DESTROY: {R.QUALITE},
+    A.SCRAP: {R.QUALITE, R.PRODUCTION, R.OPERATEUR},
+    A.ADJUST: {R.QUALITE, R.PRODUCTION},
+}
+CAN_VALIDATE = {R.ADMIN, R.QUALITE, R.PRODUCTION}
+
+
+def _approval_values(req):
+    return {
+        "action": req.action, "lot_id": str(req.lot_id), "quantity": str(req.quantity) if req.quantity is not None else None,
+        "reason": req.reason, "status": req.status,
+        "decided_by": req.decided_by.username if req.decided_by_id else None, "decision_comment": req.decision_comment,
+    }
+
+
+def _check_action_possible(*, lot, action, quantity):
+    """Verifie que l'action a un sens sur le lot. Appelee a la demande ET a la validation (le stock a pu changer)."""
+    if lot.status == Lot.Status.DETRUIT:
+        raise ValidationError({"lot": [f"Le lot {lot.code} est détruit."]})
+    if action in (A.RELEASE, A.DESTROY) and lot.status != Lot.Status.BLOQUE:
+        raise ValidationError({"lot": [f"Le lot {lot.code} n'est pas bloqué : bloquez-le d'abord."]})
+    if action == A.SCRAP:
+        if quantity is None or quantity <= 0:
+            raise ValidationError({"quantity": ["Quantité de rebut obligatoire et strictement positive."]})
+    if action == A.ADJUST and (quantity is None or quantity == 0):
+        raise ValidationError({"quantity": ["Quantité d'ajustement obligatoire, positive ou négative, non nulle."]})
+    if quantity is not None and quantity != quantity.quantize(THOUSANDTH):
+        raise ValidationError({"quantity": ["3 décimales au maximum."]})
+    balance = selectors.lot_balance(lot.id)
+    removed = quantity if action == A.SCRAP else (-quantity if action == A.ADJUST and quantity < 0 else 0)
+    if removed > balance:
+        raise ValidationError({"quantity": [f"Quantité supérieure au solde du lot ({balance})."]})
+
+
+@transaction.atomic
+def request_approval(*, tenant_id, user, lot_id, action, reason, quantity=None):
+    if user.role not in CAN_REQUEST.get(action, set()):
+        raise PermissionDenied("Votre rôle ne permet pas de demander cette action.")
+    if not reason or not reason.strip():
+        raise ValidationError({"reason": ["Motif obligatoire."]})
+    lot = _lock(lot_id)
+    if action in (A.RELEASE, A.DESTROY):
+        quantity = None
+    _check_action_possible(lot=lot, action=action, quantity=quantity)
+    pending = ApprovalRequest.objects.filter(lot=lot, action=action, status=ApprovalRequest.Status.PENDING)
+    if action in (A.RELEASE, A.DESTROY) and pending.exists():
+        raise ValidationError({"lot": ["Une demande identique est déjà en attente pour ce lot."]})
+    req = ApprovalRequest.objects.create(
+        tenant_id=tenant_id, action=action, lot=lot, quantity=quantity, reason=reason.strip(),
+        requested_by=user, requested_role=user.role,
+    )
+    record_audit(tenant_id=tenant_id, user=user, action="request", entity=req, new_values=_approval_values(req))
+    publish_event(tenant_id=tenant_id, event_type="approval.requested",
+                  payload={"approval_id": str(req.id), "action": action, "lot_id": str(lot.id)})
+    return req
+
+
+def _lock_pending(request_id):
+    req = ApprovalRequest.objects.select_for_update().filter(pk=request_id).first()
+    if req is None:
+        raise ValidationError({"request": ["Demande introuvable."]})
+    if req.status != ApprovalRequest.Status.PENDING:
+        raise ValidationError({"request": [f"Cette demande est déjà {req.get_status_display().lower()}."]})
+    return req
+
+
+def _check_validator(req, user):
+    if user.role not in CAN_VALIDATE:
+        raise PermissionDenied("Votre rôle ne permet pas de valider une demande.")
+    if req.requested_by_id == user.id:
+        raise ValidationError({"request": ["Vous ne pouvez pas valider votre propre demande."]})
+    if req.requested_role == user.role:
+        raise ValidationError({"request": ["La validation doit venir d'un utilisateur d'un autre rôle que le demandeur."]})
+
+
+def _decide(req, user, status, comment):
+    old = _approval_values(req)
+    req.status, req.decided_by, req.decided_role = status, user, user.role
+    req.decided_at, req.decision_comment = timezone.now(), comment
+    req.save(update_fields=["status", "decided_by", "decided_role", "decided_at", "decision_comment", "movement",
+                            "updated_at"])
+    return old
+
+
+@transaction.atomic
+def approve_request(*, tenant_id, user, request_id, comment=""):
+    """Valide la demande ET execute l'action, dans la meme transaction."""
+    req = _lock_pending(request_id)
+    _check_validator(req, user)
+    lot = _lock(req.lot_id)
+    _check_action_possible(lot=lot, action=req.action, quantity=req.quantity)
+    # Le mouvement est enregistre au moment de la validation, donc au nom du validateur. Le demandeur
+    # reste visible dans le motif et dans la demande liee.
+    who, reason = user, f"{req.reason} (demandé par {req.requested_by.username})"
+    if req.action == A.RELEASE:
+        old = _lot_values(lot)
+        lot.status, lot.block_reason = Lot.Status.DISPONIBLE, ""
+        lot.save(update_fields=["status", "block_reason", "updated_at"])
+        record_audit(tenant_id=tenant_id, user=user, action="release", entity=lot, old_values=old,
+                     new_values=_lot_values(lot))
+        publish_event(tenant_id=tenant_id, event_type="lot.released", payload={"lot_id": str(lot.id)})
+    elif req.action == A.DESTROY:
+        balance = selectors.lot_balance(lot.id)
+        if balance > 0:
+            req.movement = _movement(tenant_id=tenant_id, user=who, lot=lot, movement_type=Movement.Type.DESTRUCTION,
+                                     quantity=-balance, reason=reason)
+        old = _lot_values(lot)
+        lot.status = Lot.Status.DETRUIT
+        lot.save(update_fields=["status", "updated_at"])
+        record_audit(tenant_id=tenant_id, user=user, action="destroy", entity=lot, old_values=old,
+                     new_values=_lot_values(lot))
+        publish_event(tenant_id=tenant_id, event_type="lot.destroyed", payload={"lot_id": str(lot.id)})
+    elif req.action == A.SCRAP:
+        req.movement = _movement(tenant_id=tenant_id, user=who, lot=lot, movement_type=Movement.Type.REBUT,
+                                 quantity=-req.quantity, reason=reason)
+    else:
+        req.movement = _movement(tenant_id=tenant_id, user=who, lot=lot, movement_type=Movement.Type.AJUSTEMENT,
+                                 quantity=req.quantity, reason=reason)
+    if req.action in (A.SCRAP, A.ADJUST, A.DESTROY) and selectors.lot_balance(lot.id) == 0:
+        publish_event(tenant_id=tenant_id, event_type="lot.depleted", payload={"lot_id": str(lot.id)})
+    old = _decide(req, user, ApprovalRequest.Status.APPROVED, comment.strip())
+    record_audit(tenant_id=tenant_id, user=user, action="approve", entity=req, old_values=old,
+                 new_values=_approval_values(req))
+    publish_event(tenant_id=tenant_id, event_type="approval.approved", payload={"approval_id": str(req.id)})
+    return req
+
+
+@transaction.atomic
+def reject_request(*, tenant_id, user, request_id, comment):
+    if not comment or not comment.strip():
+        raise ValidationError({"comment": ["Expliquez le refus."]})
+    req = _lock_pending(request_id)
+    _check_validator(req, user)
+    old = _decide(req, user, ApprovalRequest.Status.REJECTED, comment.strip())
+    record_audit(tenant_id=tenant_id, user=user, action="reject", entity=req, old_values=old,
+                 new_values=_approval_values(req))
+    publish_event(tenant_id=tenant_id, event_type="approval.rejected", payload={"approval_id": str(req.id)})
+    return req
+
+
+@transaction.atomic
+def cancel_request(*, tenant_id, user, request_id):
+    req = _lock_pending(request_id)
+    if req.requested_by_id != user.id:
+        raise PermissionDenied("Seul le demandeur peut annuler sa demande.")
+    old = _approval_values(req)
+    req.status = ApprovalRequest.Status.CANCELLED
+    req.save(update_fields=["status", "updated_at"])
+    record_audit(tenant_id=tenant_id, user=user, action="cancel", entity=req, old_values=old,
+                 new_values=_approval_values(req))
+    publish_event(tenant_id=tenant_id, event_type="approval.cancelled", payload={"approval_id": str(req.id)})
+    return req
