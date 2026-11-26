@@ -2,7 +2,7 @@
 
 from rest_framework import serializers
 
-from catalog.models import Allergen, Article, Partner, UnitConversion
+from catalog.models import Allergen, Article, ArticleAllergen, Partner, UnitConversion
 
 
 class AllergenSerializer(serializers.ModelSerializer):
@@ -54,7 +54,7 @@ class PartnerSerializer(serializers.ModelSerializer):
     class Meta:
         model = Partner
         fields = [
-            "id", "name", "is_supplier", "is_customer", "address", "contact_name", "phone", "email",
+            "id", "name", "is_supplier", "is_customer", "address", "city", "contact_name", "phone", "email",
             "is_active", "created_at", "updated_at",
         ]
         read_only_fields = ["id", "created_at", "updated_at"]
@@ -63,3 +63,65 @@ class PartnerSerializer(serializers.ModelSerializer):
 
 class ImportFileSerializer(serializers.Serializer):
     file = serializers.FileField(help_text="Fichier CSV, séparateur ; ou , (UTF-8 ou export Excel Windows).")
+
+
+# Filtres des listes -------------------------------------------------------------
+# Plusieurs valeurs dans un meme filtre : separees par des virgules, combinees en OU.
+# Filtres differents : combines en ET.
+
+
+class CommaListField(serializers.CharField):
+    def __init__(self, *, choices=None, **kwargs):
+        self.allowed = choices
+        super().__init__(required=False, **kwargs)
+
+    def to_internal_value(self, data):
+        values = [v.strip() for v in super().to_internal_value(data).split(",") if v.strip()]
+        allowed = self.allowed() if callable(self.allowed) else self.allowed
+        if allowed is not None:
+            unknown = [v for v in values if v not in allowed]
+            if unknown:
+                raise serializers.ValidationError(f"Valeur inconnue : {', '.join(unknown)}.")
+        return values
+
+
+class YesNoField(serializers.ChoiceField):
+    """true/false dans l'URL. Absent = pas de filtre (le BooleanField de DRF lirait « faux »)."""
+
+    def __init__(self, **kwargs):
+        super().__init__(choices=["true", "false", "1", "0", "oui", "non"], required=False, **kwargs)
+
+    def to_internal_value(self, data):
+        return super().to_internal_value(str(data).lower()) in {"true", "1", "oui"}
+
+
+def _allergen_codes():
+    from catalog.selectors import allergen_codes
+
+    return allergen_codes()
+
+
+class ArticleFilterSerializer(serializers.Serializer):
+    q = serializers.CharField(required=False, max_length=100, help_text="Texte cherché dans le code ou le nom.")
+    type = CommaListField(choices=Article.Type.values)
+    storage = CommaListField(choices=Article.Storage.values)
+    active = YesNoField()
+    allergen = CommaListField(choices=_allergen_codes, help_text="Contient l'un de ces allergènes.")
+    presence = serializers.ChoiceField(
+        choices=["present", ArticleAllergen.Presence.CONTIENT, ArticleAllergen.Presence.PEUT_CONTENIR],
+        required=False, default="present", help_text="present = contient ou peut contenir.",
+    )
+    allergen_free = CommaListField(choices=_allergen_codes, help_text="Déclaré absent pour tous ces allergènes.")
+    has_allergen = YesNoField(help_text="true : au moins un allergène présent. false : déclaré, tout absent.")
+
+
+class PartnerFilterSerializer(serializers.Serializer):
+    q = serializers.CharField(required=False, max_length=100, help_text="Nom, contact, adresse ou ville.")
+    role = serializers.ChoiceField(choices=["supplier", "customer", "both"], required=False)
+    city = CommaListField(help_text="Ville, sans tenir compte des majuscules.")
+    active = YesNoField()
+
+
+class CitySerializer(serializers.Serializer):
+    city = serializers.CharField()
+    count = serializers.IntegerField()

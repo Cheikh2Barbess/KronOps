@@ -30,7 +30,7 @@ def _line_error(line, messages):
 COLUMN_OF = {
     "code": "code", "name": "nom", "article_type": "type", "base_unit": "unite",
     "shelf_life_days": "duree_vie_jours", "storage": "conservation", "allergens": "allergènes",
-    "address": "adresse", "contact_name": "contact", "phone": "telephone", "email": "email",
+    "address": "adresse", "city": "ville", "contact_name": "contact", "phone": "telephone", "email": "email",
 }
 
 
@@ -140,7 +140,7 @@ def parse_articles(uploaded_file):
 # Partenaires --------------------------------------------------------------
 
 PARTNER_REQUIRED = ["nom", "fournisseur", "client", "adresse"]
-PARTNER_OPTIONAL = ["contact", "telephone", "email"]
+PARTNER_OPTIONAL = ["ville", "contact", "telephone", "email"]
 YES = {"oui", "o", "x", "1", "vrai", "yes"}
 NO = {"non", "n", "", "0", "faux", "no"}
 
@@ -165,7 +165,7 @@ def parse_partners(uploaded_file):
             continue
         messages = []
         data = {
-            "name": row["nom"], "address": row["adresse"],
+            "name": row["nom"], "address": row["adresse"], "city": row.get("ville", ""),
             "is_supplier": _yes_no(row["fournisseur"], "fournisseur", messages),
             "is_customer": _yes_no(row["client"], "client", messages),
             "contact_name": row.get("contact", ""), "phone": row.get("telephone", ""), "email": row.get("email", ""),

@@ -47,6 +47,7 @@ const FIELDS: Record<string, string> = {
   is_supplier: "fournisseur",
   is_customer: "client",
   address: "adresse",
+  city: "ville",
   contact_name: "contact",
   phone: "téléphone",
   email: "e-mail",

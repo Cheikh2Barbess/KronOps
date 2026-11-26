@@ -107,7 +107,7 @@ def test_list_filters_by_type(client_a, flour_payload):
         format="json",
     )
     response = client_a.get("/api/v1/articles/?type=emballage")
-    assert [a["code"] for a in response.json()] == ["EMB-01"]
+    assert [a["code"] for a in response.json()["results"]] == ["EMB-01"]
 
 
 def test_allergen_list_endpoint(production_client):
@@ -139,7 +139,7 @@ def test_article_of_other_tenant_is_404(client_a, article_of_b):
 
 def test_article_list_only_shows_own_tenant(client_a, flour_payload, article_of_b):
     client_a.post("/api/v1/articles/", flour_payload, format="json")
-    codes = [a["code"] for a in client_a.get("/api/v1/articles/").json()]
+    codes = [a["code"] for a in client_a.get("/api/v1/articles/").json()["results"]]
     assert codes == ["MP-FAR-01"]
 
 

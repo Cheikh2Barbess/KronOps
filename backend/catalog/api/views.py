@@ -1,5 +1,6 @@
-from drf_spectacular.utils import OpenApiParameter, extend_schema
+from drf_spectacular.utils import extend_schema
 from rest_framework import status
+from rest_framework.pagination import PageNumberPagination
 from rest_framework.parsers import MultiPartParser
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -7,8 +8,11 @@ from rest_framework.response import Response
 from catalog import csv_import, selectors, services
 from catalog.api.serializers import (
     AllergenSerializer,
+    ArticleFilterSerializer,
     ArticleSerializer,
+    CitySerializer,
     ImportFileSerializer,
+    PartnerFilterSerializer,
     PartnerSerializer,
     UnitConversionSerializer,
 )
@@ -20,9 +24,22 @@ class ReferentialView(TenantAPIView):
     permission_classes = [IsAuthenticated, ReferentialPermission]
 
 
-def _active_param(request):
-    value = request.query_params.get("active")
-    return None if value is None else value.lower() in {"1", "true", "oui"}
+class ReferentialPagination(PageNumberPagination):
+    page_size = 50
+    page_size_query_param = "page_size"
+    max_page_size = 200
+
+
+def _paginated(request, view, qs, serializer_class):
+    paginator = ReferentialPagination()
+    page = paginator.paginate_queryset(qs, request, view=view)
+    return paginator.get_paginated_response(serializer_class(page, many=True).data)
+
+
+def _filters(request, serializer_class):
+    filters = serializer_class(data=request.query_params)
+    filters.is_valid(raise_exception=True)
+    return filters.validated_data
 
 
 class AllergenListView(ReferentialView):
@@ -32,13 +49,15 @@ class AllergenListView(ReferentialView):
 
 
 class ArticleListView(ReferentialView):
-    @extend_schema(
-        parameters=[OpenApiParameter("type", str), OpenApiParameter("active", bool)],
-        responses={200: ArticleSerializer(many=True)},
-    )
+    @extend_schema(parameters=[ArticleFilterSerializer], responses={200: ArticleSerializer(many=True)})
     def get(self, request):
-        qs = selectors.articles(article_type=request.query_params.get("type"), active=_active_param(request))
-        return Response(ArticleSerializer(qs, many=True).data)
+        data = _filters(request, ArticleFilterSerializer)
+        qs = selectors.articles(
+            q=data.get("q"), article_type=data.get("type"), storage=data.get("storage"), active=data.get("active"),
+            allergen=data.get("allergen"), presence=data["presence"], allergen_free=data.get("allergen_free"),
+            has_allergen=data.get("has_allergen"),
+        )
+        return _paginated(request, self, qs, ArticleSerializer)
 
     @extend_schema(request=ArticleSerializer, responses={201: ArticleSerializer})
     def post(self, request):
@@ -93,13 +112,11 @@ class ConversionListView(ReferentialView):
 
 
 class PartnerListView(ReferentialView):
-    @extend_schema(
-        parameters=[OpenApiParameter("role", str, enum=["supplier", "customer"]), OpenApiParameter("active", bool)],
-        responses={200: PartnerSerializer(many=True)},
-    )
+    @extend_schema(parameters=[PartnerFilterSerializer], responses={200: PartnerSerializer(many=True)})
     def get(self, request):
-        qs = selectors.partners(role=request.query_params.get("role"), active=_active_param(request))
-        return Response(PartnerSerializer(qs, many=True).data)
+        data = _filters(request, PartnerFilterSerializer)
+        qs = selectors.partners(q=data.get("q"), role=data.get("role"), city=data.get("city"), active=data.get("active"))
+        return _paginated(request, self, qs, PartnerSerializer)
 
     @extend_schema(request=PartnerSerializer, responses={201: PartnerSerializer})
     def post(self, request):
@@ -109,6 +126,14 @@ class PartnerListView(ReferentialView):
             tenant_id=request.user.tenant_id, user=request.user, **serializer.validated_data
         )
         return Response(PartnerSerializer(partner).data, status=status.HTTP_201_CREATED)
+
+
+class PartnerCityListView(ReferentialView):
+    """Villes deja saisies, pour le choix du filtre « ville » de l'ecran."""
+
+    @extend_schema(responses={200: CitySerializer(many=True)})
+    def get(self, request):
+        return Response(CitySerializer(selectors.partner_cities(), many=True).data)
 
 
 class PartnerDetailView(ReferentialView):

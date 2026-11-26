@@ -1,6 +1,6 @@
 from django.core.validators import MinValueValidator
 from django.db import models
-from django.db.models import Q
+from django.db.models import F, Q
 from django.db.models.functions import Lower
 
 from core.models import TenantModel, UUIDModel
@@ -98,6 +98,8 @@ class ArticleAllergen(TenantModel):
         constraints = [
             models.UniqueConstraint(fields=["article", "allergen"], name="article_allergen_unique"),
         ]
+        # Filtre « articles qui contiennent tel allergene ».
+        indexes = [models.Index(fields=["allergen", "presence"], name="article_allergen_presence")]
 
 
 class UnitConversion(TenantModel):
@@ -122,6 +124,8 @@ class Partner(TenantModel):
     is_supplier = models.BooleanField("fournisseur", default=False)
     is_customer = models.BooleanField("client", default=False)
     address = models.TextField("adresse")
+    # Ville a part de l'adresse : sert au filtre (ex. tous les clients d'Abidjan).
+    city = models.CharField("ville", max_length=100, blank=True, default="")
     contact_name = models.CharField("contact", max_length=200, blank=True)
     phone = models.CharField("téléphone", max_length=50, blank=True)
     email = models.EmailField("e-mail", blank=True)
@@ -133,7 +137,10 @@ class Partner(TenantModel):
             models.UniqueConstraint("tenant", Lower("name"), name="partner_unique_name_per_tenant"),
             models.CheckConstraint(condition=Q(is_supplier=True) | Q(is_customer=True), name="partner_has_role"),
         ]
-        indexes = [models.Index(fields=["tenant", "name"])]
+        indexes = [
+            models.Index(fields=["tenant", "name"]),
+            models.Index(F("tenant"), Lower("city"), name="partner_tenant_city"),
+        ]
 
     def __str__(self):
         return self.name

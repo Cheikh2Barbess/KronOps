@@ -128,7 +128,7 @@ def test_bad_partner_lines_reject_the_file(client_a, tenant_a):
 
 def test_imported_rows_land_in_own_tenant_only(client_a, client_b, tenant_b):
     upload(client_a, "/api/v1/articles/import/", HEADER + "\nMP-SUC;Sucre;matiere;kg;;ambiant;" + NONE)
-    assert client_b.get("/api/v1/articles/").json() == []
+    assert client_b.get("/api/v1/articles/").json()["results"] == []
     with tenant_context(tenant_b.id):
         assert Article.objects.count() == 0
 
@@ -145,3 +145,15 @@ def test_downloadable_templates_import_without_error(client_a, name, url):
     file = SimpleUploadedFile(name, (MODELS_DIR / name).read_bytes(), content_type="text/csv")
     response = client_a.post(url, {"file": file}, format="multipart")
     assert response.status_code == 201, response.json()
+
+
+def test_partner_file_with_city_column(client_a, tenant_a):
+    text = "\n".join(
+        [
+            "nom;fournisseur;client;adresse;ville;contact;telephone;email",
+            "Moulins CI;oui;non;Zone portuaire; Abidjan ;;;",
+        ]
+    )
+    assert upload(client_a, "/api/v1/partners/import/", text).status_code == 201
+    with tenant_context(tenant_a.id):
+        assert Partner.objects.get().city == "Abidjan"

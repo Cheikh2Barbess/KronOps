@@ -9,7 +9,7 @@ from catalog.models import Article, ArticleAllergen, Partner, UnitConversion
 from events.services import publish_event
 
 ARTICLE_FIELDS = ["code", "name", "article_type", "base_unit", "shelf_life_days", "storage", "is_active"]
-PARTNER_FIELDS = ["name", "is_supplier", "is_customer", "address", "contact_name", "phone", "email", "is_active"]
+PARTNER_FIELDS = ["name", "is_supplier", "is_customer", "address", "city", "contact_name", "phone", "email", "is_active"]
 
 
 # Allergenes ---------------------------------------------------------------
