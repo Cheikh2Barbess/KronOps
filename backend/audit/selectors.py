@@ -80,6 +80,6 @@ def describe(entries):
     for e in entries:
         key = str(e.entity_id) if e.entity_id else ""
         values = e.new_values or e.old_values or {}
-        fallback = " ".join(str(values[k]) for k in ("code", "name") if values.get(k))
+        fallback = " ".join(str(values[k]) for k in ("code", "name", "username") if values.get(k))
         subjects[e.pk] = {"subject": names.get(key, fallback), "unit": units.get(key)}
     return subjects, names

@@ -46,6 +46,7 @@ const ENTITY_TYPES: Record<string, string> = {
   "lots.movement": "Mouvements",
   "lots.approvalrequest": "Demandes de double validation",
   "lots.lotlink": "Liens entre lots",
+  "tenants.user": "Utilisateurs",
 };
 // Nom de l'objet au singulier, en tete de la colonne « Objet ».
 const ENTITY_ONE: Record<string, string> = {
@@ -57,6 +58,7 @@ const ENTITY_ONE: Record<string, string> = {
   "lots.movement": "Mouvement",
   "lots.approvalrequest": "Demande",
   "lots.lotlink": "Lien entre lots",
+  "tenants.user": "Utilisateur",
 };
 
 // Libelles francais des champs enregistres dans le journal.
@@ -103,6 +105,8 @@ const FIELDS: Record<string, string> = {
   supplier_lot_code: "lot fournisseur",
   reception_visual_ok: "contrôle visuel conforme",
   reception_temperature_c: "température à réception",
+  username: "identifiant",
+  role: "rôle",
 };
 // Valeurs codees traduites, par champ.
 const VALUES: Record<string, Record<string, string>> = {
@@ -119,12 +123,13 @@ const VALUES: Record<string, Record<string, string>> = {
   base_unit: { kg: "kg", l: "L", unite: "unité" },
   article_type: { matiere: "matière première", emballage: "emballage", semi_fini: "semi-fini", fini: "produit fini" },
   storage: { ambiant: "ambiant", refrigere: "réfrigéré", congele: "congelé" },
+  role: { admin: "Admin", qualite: "Qualité", production: "Production", operateur: "Opérateur", lecture: "Lecture" },
 };
 const PRESENCE: Record<string, string> = { contient: "contient", peut_contenir: "peut contenir", absent: "absent" };
 // Un code n'est pas affiche quand son texte lisible est deja dans la meme ligne.
 const SHADOWED: Record<string, string> = { block_code: "block_reason", reason_code: "reason" };
 // Champs portes par la colonne « Objet » : inutile de les repeter dans le detail.
-const IN_SUBJECT = new Set(["code", "name", "unit_name", "article_id", "lot_id"]);
+const IN_SUBJECT = new Set(["code", "name", "unit_name", "article_id", "lot_id", "username"]);
 
 const label = (field: string) => FIELDS[field] || field.replace(/_/g, " ");
 const num = (n: unknown) => Number(n).toLocaleString("fr-FR", { maximumFractionDigits: 3 });
@@ -171,6 +176,19 @@ function Changes({ ctx }: { ctx: Ctx }) {
   const { entry } = ctx;
   const oldV = entry.old_values || {};
   const newV = entry.new_values || {};
+  if (entry.action === "cancel" && entry.entity_type === "lots.movement") {
+    // Annulation d'un mouvement : une phrase, pas la liste des anciennes valeurs.
+    const kind = VALUES.type[String(oldV.type)] || "Mouvement";
+    const reason = newV.reason || ctx.codes[String(newV.reason_code)] || "";
+    return (
+      <span>
+        <strong>
+          {kind.charAt(0).toUpperCase() + kind.slice(1)} de {show("quantity", oldV.quantity, ctx)} annulée
+        </strong>
+        {reason ? <> · motif : <strong>{String(reason)}</strong></> : null}
+      </span>
+    );
+  }
   if (entry.changed_fields.length === 0) {
     // Creation ou import : on montre les valeurs saisies.
     const items = Object.entries(newV).filter(([k, v]) => v !== null && v !== "" && visible(k, [newV], ctx, true));
@@ -209,6 +227,13 @@ function Changes({ ctx }: { ctx: Ctx }) {
           return (
             <li key={field}>
               {label(field)} : {show(field, before, ctx)}
+            </li>
+          );
+        if (before === null || before === undefined || before === "")
+          // Une valeur qui apparait (ex. « décidé par ») : pas de « (vide) → ».
+          return (
+            <li key={field}>
+              {label(field)} : <strong>{show(field, after, ctx)}</strong>
             </li>
           );
         return (
