@@ -37,8 +37,8 @@ def test_filter_suppliers_and_customers(client_a):
         {"name": "Supermarché Plateau", "is_customer": True, "address": "Plateau, Abidjan"},
         format="json",
     )
-    assert [p["name"] for p in client_a.get("/api/v1/partners/?role=customer").json()] == ["Supermarché Plateau"]
-    assert [p["name"] for p in client_a.get("/api/v1/partners/?role=supplier").json()] == [SUPPLIER["name"]]
+    assert [p["name"] for p in client_a.get("/api/v1/partners/?role=customer").json()["results"]] == ["Supermarché Plateau"]
+    assert [p["name"] for p in client_a.get("/api/v1/partners/?role=supplier").json()["results"]] == [SUPPLIER["name"]]
 
 
 def test_update_partner(client_a):
@@ -53,7 +53,7 @@ def test_partner_of_other_tenant_is_404(client_a, client_b):
     partner_id = client_b.post("/api/v1/partners/", SUPPLIER, format="json").json()["id"]
     assert client_a.get(f"/api/v1/partners/{partner_id}/").status_code == 404
     assert client_a.patch(f"/api/v1/partners/{partner_id}/", {"name": "X"}, format="json").status_code == 404
-    assert client_a.get("/api/v1/partners/").json() == []
+    assert client_a.get("/api/v1/partners/").json()["results"] == []
 
 
 def test_operator_cannot_read_partners(operator_client):

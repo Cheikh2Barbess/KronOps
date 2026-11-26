@@ -35,6 +35,8 @@ INSTALLED_APPS = [
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
+    # Fournit la recherche insensible aux accents (extension PostgreSQL unaccent).
+    "django.contrib.postgres",
     "rest_framework",
     "drf_spectacular",
     # Apps KronOps (une app par domaine metier)
