@@ -32,6 +32,24 @@ def set_db_tenant(tenant_id):
 
 
 @contextmanager
+def _transaction_setting(name, value):
+    """Ouvre une transaction, pose un reglage local, puis remet la valeur precedente a la sortie.
+
+    Si ce bloc est imbrique dans une transaction plus large, le reglage survivrait a la sortie :
+    on remet donc la valeur precedente. (En cas d'erreur, le retour arriere du point de
+    sauvegarde restaure deja la valeur.)
+    """
+    with transaction.atomic():
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT current_setting(%s, true)", [name])
+            previous = cursor.fetchone()[0] or ""
+            cursor.execute("SELECT set_config(%s, %s, true)", [name, str(value)])
+        yield
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT set_config(%s, %s, true)", [name, previous])
+
+
+@contextmanager
 def tenant_context(tenant_id):
     """Pour les commandes, scripts et tests : ouvre une transaction et pose le tenant.
 
@@ -39,18 +57,32 @@ def tenant_context(tenant_id):
         with tenant_context(tenant.id):
             Site.objects.create(tenant_id=tenant.id, name="Usine")
     """
+    if tenant_id is None:
+        raise TenantContextError("tenant_id manquant")
     token = current_tenant_id.set(str(tenant_id))
     try:
-        with transaction.atomic():
-            with connection.cursor() as cursor:
-                cursor.execute("SELECT current_setting('app.tenant_id', true)")
-                previous = cursor.fetchone()[0] or ""
-            set_db_tenant(tenant_id)
+        with _transaction_setting("app.tenant_id", tenant_id):
             yield
-            # Si ce bloc est imbrique dans une transaction plus large, le reglage survivrait
-            # a la sortie : on remet la valeur precedente. (En cas d'erreur, le retour
-            # arriere du point de sauvegarde restaure deja la valeur.)
-            with connection.cursor() as cursor:
-                cursor.execute("SELECT set_config('app.tenant_id', %s, true)", [previous])
     finally:
         current_tenant_id.reset(token)
+
+
+@contextmanager
+def platform_user_context(user_id):
+    """Compte de l'equipe plateforme (sans entreprise) : rend visible SA PROPRE ligne
+    utilisateur, et rien d'autre (politique platform_self de tenants_user).
+
+    Sert a la connexion a l'admin Django (date de derniere connexion, mot de passe).
+    """
+    if user_id is None:
+        raise TenantContextError("user_id manquant")
+    with _transaction_setting("app.user_id", user_id):
+        yield
+
+
+def account_context(user):
+    """Contexte qui permet de modifier la ligne de `user` lui-meme : son entreprise, ou sa
+    propre ligne pour un compte plateforme."""
+    if user.tenant_id is not None:
+        return tenant_context(user.tenant_id)
+    return platform_user_context(user.pk)

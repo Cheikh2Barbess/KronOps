@@ -16,6 +16,8 @@ from django.db import migrations
 # NULLIF : apres un premier set_config dans la session, current_setting renvoie ''
 # (et non NULL) hors transaction. ''::uuid planterait. NULLIF rend NULL, donc 0 ligne.
 TENANT_EXPR = "NULLIF(current_setting('app.tenant_id', true), '')::uuid"
+# Compte plateforme (sans entreprise) en train de se connecter : voir tenants/migrations/0003.
+USER_EXPR = "NULLIF(current_setting('app.user_id', true), '')::uuid"
 
 
 def enable_rls(table):

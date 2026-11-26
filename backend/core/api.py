@@ -1,3 +1,4 @@
+from rest_framework.exceptions import PermissionDenied
 from rest_framework.views import APIView
 
 from core.tenancy import current_user_id, set_db_tenant
@@ -12,5 +13,7 @@ class TenantAPIView(APIView):
 
     def initial(self, request, *args, **kwargs):
         super().initial(request, *args, **kwargs)  # authentifie et verifie les permissions
+        if request.user.tenant_id is None:  # compte plateforme connecte a l'admin Django
+            raise PermissionDenied("Ce compte n'appartient à aucune entreprise.")
         set_db_tenant(request.user.tenant_id)
         current_user_id.set(str(request.user.pk))

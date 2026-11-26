@@ -6,6 +6,7 @@ from django.core.management.base import BaseCommand, CommandError
 
 from core.tenancy import tenant_context
 from tenants.models import User
+from tenants.selectors import find_user_by_username, username_taken
 from tenants.services import create_user
 
 
@@ -19,10 +20,10 @@ class Command(BaseCommand):
         parser.add_argument("--password", help="Deconseille (reste dans l'historique). Sinon demande au clavier.")
 
     def handle(self, *args, admin, username, role, password=None, **options):
-        admin_user = User.objects.filter(username=admin, role=User.Role.ADMIN).first()
-        if admin_user is None or admin_user.tenant_id is None:
+        admin_user = find_user_by_username(admin)
+        if admin_user is None or admin_user.role != User.Role.ADMIN or admin_user.tenant_id is None:
             raise CommandError(f"Aucun administrateur « {admin} ».")
-        if User.objects.filter(username=username).exists():
+        if username_taken(username):
             raise CommandError(f"L'identifiant {username} existe deja.")
         if not password:
             password = getpass.getpass(f"Mot de passe de {username} : ")

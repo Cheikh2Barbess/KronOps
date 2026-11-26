@@ -4,7 +4,7 @@ from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError
 from django.core.management.base import BaseCommand, CommandError
 
-from tenants.models import User
+from tenants.selectors import username_taken
 from tenants.services import create_tenant_with_admin
 
 
@@ -18,7 +18,7 @@ class Command(BaseCommand):
         parser.add_argument("--password", help="Deconseille (reste dans l'historique). Sinon demande au clavier.")
 
     def handle(self, *args, name, admin, email, password=None, **options):
-        if User.objects.filter(username=admin).exists():
+        if username_taken(admin):
             raise CommandError(f"L'identifiant {admin} existe deja.")
         if not password:
             password = getpass.getpass("Mot de passe de l'administrateur : ")

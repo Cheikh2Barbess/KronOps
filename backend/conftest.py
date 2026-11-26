@@ -34,7 +34,9 @@ def tenant_b():
 
 
 def make_user(tenant, username, role=User.Role.ADMIN):
-    return User.objects.create_user(username=username, password=PASSWORD, tenant=tenant, role=role)
+    # La table des utilisateurs est protegee par la RLS : on cree dans le contexte de l'entreprise.
+    with tenant_context(tenant.id):
+        return User.objects.create_user(username=username, password=PASSWORD, tenant=tenant, role=role)
 
 
 @pytest.fixture

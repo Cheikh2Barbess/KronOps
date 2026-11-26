@@ -98,6 +98,8 @@ DATABASES = {
 DB_APP_ROLE = env("DB_APP_ROLE", "kronops_app")
 
 AUTH_USER_MODEL = "tenants.User"
+# Connexion et session compatibles avec la RLS de la table des utilisateurs (tenants/auth.py).
+AUTHENTICATION_BACKENDS = ["tenants.auth.TenantUserBackend"]
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 AUTH_PASSWORD_VALIDATORS = [

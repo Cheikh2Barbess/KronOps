@@ -1,6 +1,7 @@
 import uuid
 
-from django.contrib.auth.models import AbstractUser
+from django.contrib.auth.hashers import check_password
+from django.contrib.auth.models import AbstractUser, UserManager
 from django.db import models
 from django.db.models import Q
 
@@ -35,13 +36,23 @@ class Tenant(UUIDModel):
         return self.name
 
 
+class TenantUserManager(UserManager):
+    def get_by_natural_key(self, username):
+        """Connexion (et createsuperuser) : l'entreprise n'est pas encore connue, la RLS cacherait
+        le compte. On passe par la fonction SQL auth_user_by_username (migration tenants/0003)."""
+        found = list(self.raw("SELECT * FROM auth_user_by_username(%s)", [username]))
+        if not found:
+            raise self.model.DoesNotExist
+        return found[0]
+
+
 class User(AbstractUser):
     """Compte utilisateur.
 
-    Exception assumee a la regle RLS : la table des utilisateurs n'a PAS de RLS, car la
-    connexion doit retrouver l'utilisateur avant de connaitre son entreprise. Consequence :
-    toute lecture d'utilisateurs dans l'API DOIT filtrer par tenant_id dans le code
-    (voir tenants/selectors.py), et un test le verifie.
+    Table protegee par la RLS comme les autres (migration tenants/0003) : la base ne montre que
+    les comptes de l'entreprise courante. La connexion et la session, qui ne connaissent pas
+    encore l'entreprise, passent par les fonctions SQL auth_* (voir tenants/auth.py).
+    Les selecteurs (tenants/selectors.py) gardent quand meme un filtre tenant_id explicite.
     """
 
     class Role(models.TextChoices):
@@ -61,6 +72,21 @@ class User(AbstractUser):
     manager = models.ForeignKey(
         "self", on_delete=models.PROTECT, null=True, blank=True, related_name="reports", verbose_name="supérieur"
     )
+
+    objects = TenantUserManager()
+
+    def check_password(self, raw_password):
+        """Comme Django, mais le renforcement automatique du hachage (apres une mise a jour de
+        Django) s'ecrit dans le contexte du compte, sinon la RLS refuserait l'ecriture."""
+        from core.tenancy import account_context
+
+        def setter(raw):
+            self.set_password(raw)
+            self._password = None
+            with account_context(self):
+                self.save(update_fields=["password"])
+
+        return check_password(raw_password, self.password, setter)
 
     @property
     def full_name(self):

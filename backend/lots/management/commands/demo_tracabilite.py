@@ -19,6 +19,7 @@ from core.tenancy import tenant_context
 from lots import services
 from lots.models import Lot
 from tenants.models import User
+from tenants.selectors import find_user_by_username
 
 
 class Command(BaseCommand):
@@ -35,8 +36,8 @@ class Command(BaseCommand):
                 "La base n'est pas encore à jour : l'API est en train de démarrer. "
                 "Attends 30 secondes (ou « docker compose logs backend » jusqu'à « Demarrage de l'API ») et relance."
             )
-        user = User.objects.filter(username=admin, role=User.Role.ADMIN).first()
-        if user is None or user.tenant_id is None:
+        user = find_user_by_username(admin)
+        if user is None or user.role != User.Role.ADMIN or user.tenant_id is None:
             raise CommandError(f"Aucun administrateur « {admin} ».")
         t = user.tenant_id
         # Tout ou rien : une erreur au milieu n'en laisse aucune trace.
