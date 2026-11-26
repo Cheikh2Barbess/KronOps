@@ -32,7 +32,9 @@ class AuditListView(TenantAPIView):
         )
         paginator = AuditPagination()
         page = paginator.paginate_queryset(qs, request, view=self)
-        return paginator.get_paginated_response(AuditEntrySerializer(page, many=True).data)
+        subjects, names = selectors.describe(page)
+        serializer = AuditEntrySerializer(page, many=True, context={"subjects": subjects, "names": names})
+        return paginator.get_paginated_response(serializer.data)
 
 
 class AuditUserListView(TenantAPIView):
