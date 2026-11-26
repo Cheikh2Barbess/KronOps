@@ -69,3 +69,14 @@ def test_names_of_another_company_never_leak(tenant_a, admin_a, ref_a, admin_b):
     other = client_for(admin_b)
     for line in entries(other):
         assert "Farine" not in str(line)
+
+
+def test_user_creation_names_the_new_user(tenant_a, admin_a):
+    from tenants import services as tenant_services
+
+    with tenant_context(tenant_a.id):
+        tenant_services.create_user(tenant_id=tenant_a.id, user=admin_a, username="op1",
+                                    password="motdepasse-test-123", role=User.Role.OPERATEUR)
+    line = entries(client_for(admin_a), entity_type="tenants.user")[0]
+    assert line["subject"] == "op1"
+    assert line["new_values"] == {"username": "op1", "role": "operateur"}
