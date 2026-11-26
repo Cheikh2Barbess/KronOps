@@ -5,6 +5,7 @@
 // de lot ecrit par le fournisseur (une identite) et les mesures (quantite, date, temperature).
 // Les regles (DLC obligatoire, temperature, motif) sont appliquees par l'API, l'ecran les rappelle.
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { Person } from "@/components/Person";
 import { api, ApiError } from "@/lib/api";
 
 type Me = { id: string; username: string; role: string };
@@ -310,7 +311,9 @@ function ReceptionRow({ row, reasons, onChanged }: { row: Row; reasons: Option[]
         )}
       </td>
       <td>{withUnit(row.quantity, row.base_unit)}</td>
-      <td>{row.username}</td>
+      <td>
+        <Person username={row.username} />
+      </td>
       <td>{state}</td>
       <td>
         {row.can_reverse && !reversing && <button onClick={() => setReversing(true)}>Annuler</button>}

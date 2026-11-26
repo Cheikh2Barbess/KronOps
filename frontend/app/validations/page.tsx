@@ -3,6 +3,7 @@
 // Double validation (US-20) : deblocage, destruction, rebut et ajustement de stock.
 // Une personne demande, une 2e personne d'un AUTRE role valide. Les regles sont appliquees par l'API.
 import { FormEvent, useCallback, useEffect, useState } from "react";
+import { Person } from "@/components/Person";
 import { api, ApiError } from "@/lib/api";
 
 type Me = { id: string; username: string; role: string };
@@ -260,7 +261,7 @@ function ApprovalRow({ a, me, reasons, onChanged }: { a: Approval; me: Me; reaso
         {a.comment && <> : {a.comment}</>}
       </td>
       <td>
-        {a.requested_by_username} ({ROLES[a.requested_role] || a.requested_role})
+        <Person username={a.requested_by_username} /> ({ROLES[a.requested_role] || a.requested_role})
       </td>
       <td>
         <strong>{STATUS[a.status] || a.status}</strong>
@@ -268,7 +269,7 @@ function ApprovalRow({ a, me, reasons, onChanged }: { a: Approval; me: Me; reaso
           <>
             <br />
             <small>
-              par {a.decided_by_username} ({ROLES[a.decided_role] || a.decided_role})
+              par <Person username={a.decided_by_username} /> ({ROLES[a.decided_role] || a.decided_role})
               {a.decision_label && ` : ${a.decision_label}`}
               {a.decision_comment && ` (${a.decision_comment})`}
             </small>
