@@ -64,6 +64,11 @@ export default function Home() {
           )}
           {["admin", "qualite", "production", "operateur"].includes(me.role) && (
             <p>
+              <a href="/receptions">Réceptions : enregistrer une livraison</a>
+            </p>
+          )}
+          {["admin", "qualite", "production", "operateur"].includes(me.role) && (
+            <p>
               <a href="/validations">Validations : déblocage, destruction, rebut, ajustement</a>
             </p>
           )}

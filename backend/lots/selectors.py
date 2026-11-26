@@ -3,11 +3,14 @@
 from decimal import Decimal
 
 from django.db import connection
-from django.db.models import DecimalField, Q, Sum, Value
+from django.db.models import (
+    BooleanField, Case, Count, DecimalField, Exists, IntegerField, OuterRef, Q, Subquery, Sum, Value, When,
+)
 from django.db.models.functions import Coalesce
 from django.http import Http404
 
-from lots.models import ApprovalRequest, Lot, Movement
+from catalog.models import Article, Partner
+from lots.models import ApprovalRequest, Lot, LotLink, Movement
 from tenants.models import User
 
 ZERO = Value(Decimal("0"), output_field=DecimalField(max_digits=18, decimal_places=3))
@@ -116,3 +119,47 @@ def approval_or_404(*, user, request_id):
     if req is None:
         raise Http404
     return req
+
+
+# Ecran de reception ---------------------------------------------------------
+
+
+def reception_articles():
+    """Articles actifs, avec leurs conditionnements, pour la liste deroulante de l'ecran de reception."""
+    return Article.objects.filter(is_active=True).prefetch_related("conversions").order_by("article_type", "code")
+
+
+def reception_suppliers():
+    return Partner.objects.filter(is_supplier=True, is_active=True).order_by("name")
+
+
+def recent_receptions(*, user, limit=50):
+    """Dernieres receptions. Un operateur ne voit que les siennes, les seules qu'il peut annuler.
+
+    `can_reverse` reprend les regles de services.reverse_movement : pas deja annulee, lot ni detruit ni
+    utilise depuis (aucun autre mouvement, aucun lot fabrique a partir de lui).
+    """
+    others = (
+        Movement.objects.filter(lot_id=OuterRef("lot_id")).exclude(pk=OuterRef("pk"))
+        .values("lot_id").annotate(n=Count("id")).values("n")
+    )
+    reversal = Movement.objects.filter(reverses=OuterRef("pk"))
+    qs = (
+        Movement.objects.filter(movement_type=Movement.Type.RECEPTION)
+        .select_related("lot__article", "partner", "user")
+        .annotate(
+            other_movements=Coalesce(Subquery(others, output_field=IntegerField()), 0),
+            reversed=Exists(reversal),
+            reversal_reason=Subquery(reversal.values("reason")[:1]),
+            used_in_production=Exists(LotLink.objects.filter(parent_lot_id=OuterRef("lot_id"))),
+        )
+        .annotate(can_reverse=Case(
+            When(Q(reversed=False, other_movements=0, used_in_production=False) & ~Q(lot__status=Lot.Status.DETRUIT),
+                 then=Value(True)),
+            default=Value(False), output_field=BooleanField(),
+        ))
+        .order_by("-created_at", "-id")
+    )
+    if user.role == User.Role.OPERATEUR:
+        qs = qs.filter(user=user)
+    return qs[:limit]

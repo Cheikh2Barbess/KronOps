@@ -53,6 +53,15 @@ class LotPermission(BasePermission):
         return has_role(request.user, R.ADMIN, R.QUALITE, R.PRODUCTION, R.OPERATEUR)
 
 
+class ReceptionPermission(BasePermission):
+    """Ecran de reception : seulement les roles qui peuvent enregistrer une livraison."""
+
+    message = "Votre rôle ne permet pas d'enregistrer une réception."
+
+    def has_permission(self, request, view):
+        return has_role(request.user, R.ADMIN, R.QUALITE, R.PRODUCTION, R.OPERATEUR)
+
+
 class BlockLotPermission(BasePermission):
     message = "Seuls les rôles Admin, Qualité et Production peuvent bloquer un lot."
 

@@ -24,6 +24,47 @@ class ReceptionSerializer(serializers.Serializer):
     )
 
 
+class ConversionOptionSerializer(serializers.Serializer):
+    unit_name = serializers.CharField()
+    factor = serializers.DecimalField(max_digits=18, decimal_places=6)
+
+
+class ReceptionArticleSerializer(serializers.Serializer):
+    id = serializers.UUIDField()
+    code = serializers.CharField()
+    name = serializers.CharField()
+    article_type = serializers.CharField()
+    base_unit = serializers.CharField()
+    storage = serializers.CharField()
+    conversions = ConversionOptionSerializer(many=True, source="conversions.all")
+
+
+class ReceptionSupplierSerializer(serializers.Serializer):
+    id = serializers.UUIDField()
+    name = serializers.CharField()
+    city = serializers.CharField()
+
+
+class ReceptionRowSerializer(serializers.Serializer):
+    movement_id = serializers.UUIDField(source="id")
+    lot_id = serializers.UUIDField(source="lot.id")
+    lot_code = serializers.CharField(source="lot.code")
+    lot_status = serializers.CharField(source="lot.status")
+    article_code = serializers.CharField(source="lot.article.code")
+    article_name = serializers.CharField(source="lot.article.name")
+    base_unit = serializers.CharField(source="lot.article.base_unit")
+    supplier_name = serializers.CharField(source="partner.name", default=None)
+    supplier_lot_code = serializers.CharField(source="lot.supplier_lot_code")
+    quantity = serializers.DecimalField(max_digits=18, decimal_places=3)
+    block_reason = serializers.CharField(source="lot.block_reason")
+    occurred_at = serializers.DateTimeField()
+    created_at = serializers.DateTimeField()
+    username = serializers.CharField(source="user.username", default=None)
+    reversed = serializers.BooleanField()
+    reversal_reason = serializers.CharField(allow_null=True)
+    can_reverse = serializers.BooleanField()
+
+
 class ReverseSerializer(serializers.Serializer):
     reason_code = serializers.ChoiceField(choices=list(reasons.REVERSAL), help_text="Voir approvals/reasons/ (reversal).")
     comment = serializers.CharField(required=False, allow_blank=True, default="", help_text="Obligatoire pour « autre ».")

@@ -16,7 +16,10 @@ from lots.api.serializers import (
     BlockSerializer,
     LotDetailSerializer,
     LotSerializer,
+    ReceptionArticleSerializer,
+    ReceptionRowSerializer,
     ReceptionSerializer,
+    ReceptionSupplierSerializer,
     RejectSerializer,
     ReverseSerializer,
     ShipmentSerializer,
@@ -24,7 +27,9 @@ from lots.api.serializers import (
     TraceQuerySerializer,
 )
 from tenants.models import User
-from tenants.permissions import ApprovalPermission, BlockLotPermission, LotPermission, TraceabilityPermission
+from tenants.permissions import (
+    ApprovalPermission, BlockLotPermission, LotPermission, ReceptionPermission, TraceabilityPermission,
+)
 
 
 def _detail(lot_id):
@@ -55,6 +60,11 @@ class LotDetailView(TenantAPIView):
 class ReceptionView(TenantAPIView):
     permission_classes = [IsAuthenticated, LotPermission]
 
+    @extend_schema(responses={200: ReceptionRowSerializer(many=True)})
+    def get(self, request):
+        """Dernieres receptions (50). Un operateur ne voit que les siennes."""
+        return Response(ReceptionRowSerializer(selectors.recent_receptions(user=request.user), many=True).data)
+
     @extend_schema(request=ReceptionSerializer, responses={201: LotDetailSerializer})
     def post(self, request):
         serializer = ReceptionSerializer(data=request.data)
@@ -68,6 +78,22 @@ class ReceptionView(TenantAPIView):
         lot = services.receive_lot(tenant_id=request.user.tenant_id, user=request.user, article=article,
                                    supplier=supplier, **data)
         return Response(_detail(lot.id), status=status.HTTP_201_CREATED)
+
+
+class ReceptionOptionsView(TenantAPIView):
+    """Listes de l'ecran de reception. Un operateur n'a pas acces aux referentiels : il recoit ici
+    seulement ce qu'il faut pour enregistrer une livraison."""
+
+    permission_classes = [IsAuthenticated, ReceptionPermission]
+
+    @extend_schema(responses={200: dict})
+    def get(self, request):
+        return Response({
+            "articles": ReceptionArticleSerializer(selectors.reception_articles(), many=True).data,
+            "suppliers": ReceptionSupplierSerializer(selectors.reception_suppliers(), many=True).data,
+            "reception_reasons": reasons.as_options(reasons.RECEPTION),
+            "reversal_reasons": reasons.as_options(reasons.REVERSAL),
+        })
 
 
 class BlockLotView(TenantAPIView):

@@ -17,7 +17,7 @@ Ce dépôt contient le socle technique et les premières fonctions métier : les
 | Documentation de l'API | Générée automatiquement, visible sur `/api/v1/docs/` |
 | Référentiels (US-02) | Articles (matière, emballage, semi-fini, produit fini), allergènes obligatoires pour les matières (14 allergènes UE), conversions d'unités (1 sac = 25 kg), fournisseurs et clients, import CSV tout ou rien. Écran : http://localhost:3000/referentiels |
 | Journal d'audit (US-03) | Qui a créé, modifié ou importé quoi, quand, avec l'ancienne et la nouvelle valeur. Filtres par objet, action, utilisateur et dates. Lecture seule, rôles Admin et Qualité. Écran : http://localhost:3000/journal |
-| Lots et traçabilité | Réception d'un lot fournisseur (API seulement, l'écran attend les maquettes testées avec les opérateurs), stock par lot calculé depuis les mouvements, jamais négatif, blocage avec motif, annulation par contre-mouvement. Les motifs (blocage, réception non conforme, annulation, double validation) se choisissent dans des listes fermées, visibles sur http://localhost:3000/api/v1/approvals/reasons/ une fois connecté. Recherche aval (lot fournisseur vers lots produits et clients livrés) et amont. Écran : http://localhost:3000/tracabilite |
+| Lots et traçabilité | Réception d'une livraison fournisseur guidée par listes, avec annulation tant que le lot n'a pas servi (écran : http://localhost:3000/receptions), stock par lot calculé depuis les mouvements, jamais négatif, blocage avec motif, annulation par contre-mouvement. Les motifs (blocage, réception non conforme, annulation, double validation) se choisissent dans des listes fermées, visibles sur http://localhost:3000/api/v1/approvals/reasons/ une fois connecté. Recherche aval (lot fournisseur vers lots produits et clients livrés) et amont. Écran : http://localhost:3000/tracabilite |
 | Tests automatiques | 118 tests, dont l'isolation entre clients et l'immuabilité de l'audit |
 
 ## Lancer KronOps sur ton ordinateur
@@ -122,7 +122,16 @@ Rôles possibles : `admin`, `qualite`, `production`, `operateur`, `lecture`. Ens
 2. Connecté en `qualite1`, demande « Débloquer le lot » en choisissant un motif. Le lot reste bloqué : ta propre demande ne peut pas être validée par toi.
 3. Connecté en `prod1` (ou `patron`), clique « Valider » : le lot redevient disponible. Le journal d'audit garde la demande et la validation.
 
-Règles (matrice des droits du PRD) : déblocage et destruction sont demandés par la Qualité, le rebut par la Qualité, la Production ou un opérateur, l'ajustement par la Qualité ou la Production. Admin, Qualité et Production valident, jamais leur propre demande ni celle d'une personne du même rôle.
+Règles (matrice des droits du PRD et décisions du 26/11) : déblocage et destruction sont demandés par la Qualité ou l'Admin, le rebut par la Qualité, la Production, un opérateur ou l'Admin, l'ajustement par la Qualité, la Production ou l'Admin. Admin, Qualité et Production valident, jamais leur propre demande ni celle d'une personne du même rôle. Un déblocage passe toujours par la Qualité. Une décision prise est définitive.
+
+### 11. Enregistrer une livraison
+
+Crée un opérateur (`create_user --admin patron --username op1 --role operateur`), connecte-toi avec, puis ouvre http://localhost:3000/receptions :
+
+1. Choisis le fournisseur et l'article. L'unité de l'article et ses conditionnements (sac de 25 kg...) apparaissent, avec la quantité convertie.
+2. Saisis la DLC ou la DDM, la température si l'article est réfrigéré ou congelé, et le résultat du contrôle visuel. « Non conforme » demande un motif dans la liste et crée le lot bloqué.
+3. Enregistre : le numéro du lot s'affiche, à écrire sur la livraison.
+4. En cas d'erreur, « Annuler » dans la liste des dernières réceptions, avec un motif. C'est possible tant que le lot n'a pas servi. Un opérateur ne voit et n'annule que ses propres réceptions.
 
 ## En cas de problème
 
