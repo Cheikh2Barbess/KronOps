@@ -1,7 +1,7 @@
 # KronOps
 
 Logiciel de pilotage de production (MES) pour l'agroalimentaire, vendu en abonnement.
-Ce dépôt contient pour l'instant **le socle technique uniquement** : aucune fonction métier (lots, ordres de fabrication) n'est encore écrite.
+Ce dépôt contient le socle technique et la première fonction métier : les **référentiels** (US-02 du PRD). Les lots, ordres de fabrication et expéditions ne sont pas encore écrits.
 
 ## Ce que le socle contient déjà
 
@@ -15,7 +15,8 @@ Ce dépôt contient pour l'instant **le socle technique uniquement** : aucune fo
 | Table d'événements (outbox) | Chaque action laisse un événement, prêt pour les alertes de la phase 2 |
 | Point de contrôle `/api/v1/health/` | Indique si le service et la base répondent |
 | Documentation de l'API | Générée automatiquement, visible sur `/api/v1/docs/` |
-| Tests automatiques | 27 tests, dont l'isolation entre clients et l'immuabilité de l'audit |
+| Référentiels (US-02) | Articles (matière, emballage, semi-fini, produit fini), allergènes obligatoires pour les matières (14 allergènes UE), conversions d'unités (1 sac = 25 kg), fournisseurs et clients, import CSV tout ou rien. Écran : http://localhost:3000/referentiels |
+| Tests automatiques | 72 tests, dont l'isolation entre clients et l'immuabilité de l'audit |
 
 ## Lancer KronOps sur ton ordinateur
 
@@ -70,7 +71,16 @@ Le mot de passe est demandé au clavier (10 caractères minimum, rien ne s'affic
 
 Sur Windows, utilise plutôt : `docker compose run --rm backend sh -c 'DB_USER=$DB_OWNER_USER DB_PASSWORD=$DB_OWNER_PASSWORD python -m pytest'`
 
-Tu dois voir `27 passed` à la fin. **Si un test échoue après une modification faite avec l'IA, la modification est fausse** : ne la garde pas.
+Tu dois voir `72 passed` à la fin (ou `70 passed, 2 skipped` dans Docker). **Si un test échoue après une modification faite avec l'IA, la modification est fausse** : ne la garde pas.
+
+### 7. Essayer les référentiels
+
+1. Connecte-toi sur http://localhost:3000 puis clique sur « Référentiels ».
+2. Dans « Articles », clique sur « Télécharger le modèle », puis importe ce même fichier : 5 articles apparaissent.
+3. Ouvre le modèle dans Excel, vide les colonnes d'allergènes d'une matière, enregistre en CSV et importe-le : le fichier est refusé en entier, avec le numéro de ligne en erreur.
+4. Fais de même avec le modèle « Fournisseurs et clients ».
+
+Format du fichier articles : séparateur `;` ou `,`, une ligne d'en-tête. Colonnes obligatoires `code`, `nom`, `type` (matiere, emballage, semi_fini, fini), `unite` (kg, l, unite). Colonnes facultatives `duree_vie_jours`, `conservation` (ambiant, refrigere, congele) et une colonne par allergène (`gluten`, `crustaces`, `oeufs`, `poissons`, `arachides`, `soja`, `lait`, `fruits_a_coque`, `celeri`, `moutarde`, `sesame`, `sulfites`, `lupin`, `mollusques`) avec `contient`, `peut_contenir` ou `absent`. Pour une matière, les 14 colonnes sont obligatoires.
 
 ## En cas de problème
 
@@ -93,7 +103,8 @@ backend/            API Django
   tenants/          entreprises, sites, utilisateurs, rôles, connexion
   audit/            journal d'audit en insertion seule
   events/           table d'événements (outbox)
-frontend/           écran Next.js (page de démonstration du socle)
+  catalog/          référentiels : articles, allergènes, conversions d'unités, fournisseurs et clients
+frontend/           écrans Next.js (accueil, référentiels) et modèles CSV dans public/modeles/
 docker/             script de création des rôles PostgreSQL
 scripts/test.sh     lance les tests
 CLAUDE.md           règles à respecter par l'assistant IA

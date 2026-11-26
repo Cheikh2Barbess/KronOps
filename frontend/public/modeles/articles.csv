@@ -1,0 +1,6 @@
+﻿code;nom;type;unite;duree_vie_jours;conservation;gluten;crustaces;oeufs;poissons;arachides;soja;lait;fruits_a_coque;celeri;moutarde;sesame;sulfites;lupin;mollusques
+MP-FAR-01;Farine de blé T55;matiere;kg;180;ambiant;contient;absent;absent;absent;absent;absent;absent;absent;absent;absent;absent;absent;absent;absent
+MP-SUC-01;Sucre blanc;matiere;kg;;ambiant;absent;absent;absent;absent;absent;absent;absent;absent;absent;absent;absent;absent;absent;absent
+MP-LAI-01;Lait entier en poudre;matiere;kg;365;ambiant;absent;absent;absent;absent;absent;absent;contient;absent;absent;absent;absent;absent;absent;absent
+EMB-SAC-01;Sachet kraft 1 kg;emballage;unite;;;;;;;;;;;;;;;;
+PF-BIS-01;Biscuit sablé 200 g;fini;unite;120;ambiant;;;;;;;;;;;;;;

@@ -1,0 +1,3 @@
+﻿nom;fournisseur;client;adresse;contact;telephone;email
+Moulins Exemple SA;oui;non;Zone industrielle, Abidjan;Service achats;0102030405;
+Supermarché Exemple;non;oui;Plateau, Abidjan;Responsable achats;;achats@example.com

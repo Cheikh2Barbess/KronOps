@@ -42,6 +42,7 @@ INSTALLED_APPS = [
     "tenants",
     "audit",
     "events",
+    "catalog",
 ]
 
 MIDDLEWARE = [
