@@ -45,7 +45,9 @@ services:
         condition: service_healthy
 
   frontend:
-    build: ./frontend
+    build:
+      context: ./frontend
+      target: dev
     environment:
       API_INTERNAL_URL: http://backend:8000
     volumes:

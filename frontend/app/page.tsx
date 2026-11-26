@@ -1,7 +1,8 @@
 "use client";
 
 // Page de demonstration du socle : etat du service, connexion, utilisateur courant.
-// Lien vers les referentiels une fois connecte.
+// Lien vers les referentiels une fois connecte. Le formulaire de connexion ne
+// s'affiche qu'une fois la session verifiee, pour ne pas le montrer a un utilisateur deja connecte.
 import { FormEvent, useEffect, useState } from "react";
 import { api, ApiError } from "@/lib/api";
 
@@ -10,7 +11,8 @@ type Health = { status: string; database: string };
 
 export default function Home() {
   const [health, setHealth] = useState<Health | null>(null);
-  const [me, setMe] = useState<Me | null>(null);
+  // undefined = on ne sait pas encore (verification en cours), null = pas connecte.
+  const [me, setMe] = useState<Me | null | undefined>(undefined);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -45,7 +47,9 @@ export default function Home() {
         Service : <strong>{health ? health.status : "..."}</strong> · Base de données :{" "}
         <strong>{health ? health.database : "..."}</strong>
       </p>
-      {me ? (
+      {me === undefined ? (
+        <p>Vérification de la session...</p>
+      ) : me ? (
         <section>
           <p>
             Connecté : <strong>{me.username}</strong> ({me.role}) chez <strong>{me.tenant_name}</strong>
@@ -53,6 +57,11 @@ export default function Home() {
           <p>
             <a href="/referentiels">Référentiels : articles, fournisseurs et clients</a>
           </p>
+          {["admin", "qualite"].includes(me.role) && (
+            <p>
+              <a href="/journal">Journal d&apos;audit</a>
+            </p>
+          )}
           <button onClick={onLogout}>Se déconnecter</button>
         </section>
       ) : (

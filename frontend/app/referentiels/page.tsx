@@ -12,6 +12,7 @@ type Article = {
   article_type: string;
   base_unit: string;
   shelf_life_days: number | null;
+  storage: string;
   is_active: boolean;
   allergens: Record<string, string> | null;
 };
@@ -21,10 +22,157 @@ type Partner = {
   is_supplier: boolean;
   is_customer: boolean;
   address: string;
+  contact_name: string;
   phone: string;
   email: string;
+  is_active: boolean;
 };
 type LineError = { line: number; messages: string[] };
+type Allergen = { code: string; name: string };
+
+const PRESENCES: Record<string, string> = { absent: "Absent", peut_contenir: "Peut contenir", contient: "Contient" };
+const STORAGES: Record<string, string> = { "": "(non précisé)", ambiant: "Ambiant", refrigere: "Réfrigéré", congele: "Congelé" };
+
+function errorText(body: unknown): string {
+  // Erreurs DRF {champ: [messages]} transformees en une phrase lisible.
+  if (!body || typeof body !== "object") return "Enregistrement refusé.";
+  const labels: Record<string, string> = {
+    code: "Code", article_type: "Type", base_unit: "Unité", name: "Nom", address: "Adresse", email: "E-mail", shelf_life_days: "Durée de vie", allergens: "Allergènes",
+  };
+  return Object.entries(body as Record<string, unknown>)
+    .map(([field, msgs]) => {
+      const text = Array.isArray(msgs) ? msgs.join(" ") : String(msgs);
+      return field === "non_field_errors" || field === "detail" ? text : `${labels[field] || field} : ${text}`;
+    })
+    .join(" ");
+}
+
+function ArticleEditor({
+  article,
+  allergens,
+  onCancel,
+  onSaved,
+}: {
+  article: Article | null; // null = creation d'un nouvel article
+  allergens: Allergen[];
+  onCancel: () => void;
+  onSaved: () => void;
+}) {
+  const [articleType, setArticleType] = useState(article ? article.article_type : "matiere");
+  const needsAllergens = articleType === "matiere" || (article !== null && article.allergens !== null);
+  const [error, setError] = useState<string | null>(null);
+
+  async function onSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setError(null);
+    const form = new FormData(event.currentTarget);
+    const shelfLife = String(form.get("shelf_life_days") || "").trim();
+    const payload: Record<string, unknown> = {
+      name: String(form.get("name") || "").trim(),
+      shelf_life_days: shelfLife ? Number(shelfLife) : null,
+      storage: String(form.get("storage") || ""),
+      is_active: form.get("is_active") === "on",
+    };
+    if (needsAllergens) {
+      payload.allergens = Object.fromEntries(allergens.map((a) => [a.code, String(form.get(`allergen_${a.code}`))]));
+    }
+    try {
+      if (article) {
+        await api(`articles/${article.id}/`, { method: "PATCH", body: JSON.stringify(payload) });
+      } else {
+        payload.code = String(form.get("code") || "").trim();
+        payload.article_type = articleType;
+        payload.base_unit = String(form.get("base_unit") || "");
+        await api("articles/", { method: "POST", body: JSON.stringify(payload) });
+      }
+      onSaved();
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 403) setError("Votre rôle ne permet pas d'enregistrer un article.");
+      else setError(e instanceof ApiError ? errorText(e.body) : "Erreur pendant l'enregistrement.");
+    }
+  }
+
+  return (
+    <form onSubmit={onSubmit} style={{ display: "grid", gap: 8, padding: 12, border: "1px solid #888", margin: "8px 0" }}>
+      {article ? (
+        <strong>
+          Modifier {article.code} (unité de base {article.base_unit}, non modifiable)
+        </strong>
+      ) : (
+        <>
+          <strong>Nouvel article</strong>
+          <label>
+            Code <input name="code" required maxLength={50} />
+          </label>
+          <label>
+            Type{" "}
+            <select name="article_type" value={articleType} onChange={(e) => setArticleType(e.target.value)}>
+              {Object.entries(TYPES).map(([v, label]) => (
+                <option key={v} value={v}>
+                  {label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Unité de base (non modifiable ensuite){" "}
+            <select name="base_unit" defaultValue="kg">
+              <option value="kg">kg</option>
+              <option value="l">L</option>
+              <option value="unite">unité</option>
+            </select>
+          </label>
+        </>
+      )}
+      <label>
+        Nom <input name="name" defaultValue={article?.name ?? ""} required style={{ width: 320 }} />
+      </label>
+      <label>
+        Durée de vie (jours){" "}
+        <input name="shelf_life_days" type="number" min={1} defaultValue={article?.shelf_life_days ?? ""} />
+      </label>
+      <label>
+        Conservation{" "}
+        <select name="storage" defaultValue={article?.storage ?? ""}>
+          {Object.entries(STORAGES).map(([v, label]) => (
+            <option key={v} value={v}>
+              {label}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label>
+        <input type="checkbox" name="is_active" defaultChecked={article?.is_active ?? true} /> Actif
+      </label>
+      {needsAllergens && (
+        <fieldset>
+          <legend>Allergènes (chacun doit être déclaré)</legend>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: 4 }}>
+            {allergens.map((a) => (
+              <label key={a.code} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+                <span>{a.name}</span>
+                <select name={`allergen_${a.code}`} defaultValue={article?.allergens?.[a.code] ?? ""} required>
+                  <option value="" disabled>
+                    À déclarer
+                  </option>
+                  {Object.entries(PRESENCES).map(([v, label]) => (
+                    <option key={v} value={v}>
+                      {label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ))}
+          </div>
+        </fieldset>
+      )}
+      {error && <p role="alert">{error}</p>}
+      <div>
+        <button type="submit">Enregistrer</button> <button type="button" onClick={onCancel}>Annuler</button>
+      </div>
+    </form>
+  );
+}
 
 const TYPES: Record<string, string> = {
   matiere: "Matière",
@@ -87,9 +235,84 @@ function ImportForm({ path, model, onDone }: { path: string; model: string; onDo
   );
 }
 
+function PartnerEditor({
+  partner,
+  onCancel,
+  onSaved,
+}: {
+  partner: Partner | null; // null = creation
+  onCancel: () => void;
+  onSaved: () => void;
+}) {
+  const [error, setError] = useState<string | null>(null);
+
+  async function onSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setError(null);
+    const form = new FormData(event.currentTarget);
+    const text = (name: string) => String(form.get(name) || "").trim();
+    const payload = {
+      name: text("name"),
+      is_supplier: form.get("is_supplier") === "on",
+      is_customer: form.get("is_customer") === "on",
+      address: text("address"),
+      contact_name: text("contact_name"),
+      phone: text("phone"),
+      email: text("email"),
+      is_active: form.get("is_active") === "on",
+    };
+    try {
+      if (partner) await api(`partners/${partner.id}/`, { method: "PATCH", body: JSON.stringify(payload) });
+      else await api("partners/", { method: "POST", body: JSON.stringify(payload) });
+      onSaved();
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 403) setError("Votre rôle ne permet pas d'enregistrer un partenaire.");
+      else setError(e instanceof ApiError ? errorText(e.body) : "Erreur pendant l'enregistrement.");
+    }
+  }
+
+  return (
+    <form onSubmit={onSubmit} style={{ display: "grid", gap: 8, padding: 12, border: "1px solid #888", margin: "8px 0" }}>
+      <strong>{partner ? `Modifier ${partner.name}` : "Nouveau fournisseur ou client"}</strong>
+      <label>
+        Nom <input name="name" defaultValue={partner?.name ?? ""} required style={{ width: 320 }} />
+      </label>
+      <div>
+        <label>
+          <input type="checkbox" name="is_supplier" defaultChecked={partner?.is_supplier ?? true} /> Fournisseur
+        </label>{" "}
+        <label>
+          <input type="checkbox" name="is_customer" defaultChecked={partner?.is_customer ?? false} /> Client
+        </label>
+      </div>
+      <label>
+        Adresse <textarea name="address" defaultValue={partner?.address ?? ""} required rows={2} style={{ width: 420 }} />
+      </label>
+      <label>
+        Contact <input name="contact_name" defaultValue={partner?.contact_name ?? ""} />
+      </label>
+      <label>
+        Téléphone <input name="phone" defaultValue={partner?.phone ?? ""} />
+      </label>
+      <label>
+        E-mail <input name="email" type="email" defaultValue={partner?.email ?? ""} />
+      </label>
+      <label>
+        <input type="checkbox" name="is_active" defaultChecked={partner?.is_active ?? true} /> Actif
+      </label>
+      {error && <p role="alert">{error}</p>}
+      <div>
+        <button type="submit">Enregistrer</button> <button type="button" onClick={onCancel}>Annuler</button>
+      </div>
+    </form>
+  );
+}
+
 export default function Referentiels() {
   const [articles, setArticles] = useState<Article[] | null>(null);
   const [partners, setPartners] = useState<Partner[] | null>(null);
+  const [allergens, setAllergens] = useState<Allergen[]>([]);
+  const [editing, setEditing] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(() => {
@@ -104,6 +327,9 @@ export default function Referentiels() {
   }, []);
 
   useEffect(load, [load]);
+  useEffect(() => {
+    api<Allergen[]>("allergens/").then(setAllergens).catch(() => setAllergens([]));
+  }, []);
 
   if (error)
     return (
@@ -121,6 +347,19 @@ export default function Referentiels() {
       <h1>Référentiels</h1>
 
       <h2>Articles</h2>
+      {editing === "new-article" ? (
+        <ArticleEditor
+          article={null}
+          allergens={allergens}
+          onCancel={() => setEditing(null)}
+          onSaved={() => {
+            setEditing(null);
+            load();
+          }}
+        />
+      ) : (
+        <button onClick={() => setEditing("new-article")}>Nouvel article</button>
+      )}
       <ImportForm path="articles/import/" model="/modeles/articles.csv" onDone={load} />
       {articles === null ? (
         <p>Chargement...</p>
@@ -136,24 +375,56 @@ export default function Referentiels() {
               <th>Unité</th>
               <th>Durée de vie (j)</th>
               <th>Allergènes</th>
+              <th></th>
             </tr>
           </thead>
           <tbody>
-            {articles.map((a) => (
-              <tr key={a.id} style={{ borderTop: "1px solid #ddd", opacity: a.is_active ? 1 : 0.5 }}>
-                <td>{a.code}</td>
-                <td>{a.name}</td>
-                <td>{TYPES[a.article_type] || a.article_type}</td>
-                <td>{a.base_unit}</td>
-                <td>{a.shelf_life_days ?? ""}</td>
-                <td>{allergenSummary(a)}</td>
-              </tr>
-            ))}
+            {articles.map((a) =>
+              editing === a.id ? (
+                <tr key={a.id}>
+                  <td colSpan={7}>
+                    <ArticleEditor
+                      article={a}
+                      allergens={allergens}
+                      onCancel={() => setEditing(null)}
+                      onSaved={() => {
+                        setEditing(null);
+                        load();
+                      }}
+                    />
+                  </td>
+                </tr>
+              ) : (
+                <tr key={a.id} style={{ borderTop: "1px solid #ddd", opacity: a.is_active ? 1 : 0.5 }}>
+                  <td>{a.code}</td>
+                  <td>{a.name}</td>
+                  <td>{TYPES[a.article_type] || a.article_type}</td>
+                  <td>{a.base_unit}</td>
+                  <td>{a.shelf_life_days ?? ""}</td>
+                  <td>{allergenSummary(a)}</td>
+                  <td>
+                    <button onClick={() => setEditing(a.id)}>Modifier</button>
+                  </td>
+                </tr>
+              )
+            )}
           </tbody>
         </table>
       )}
 
       <h2>Fournisseurs et clients</h2>
+      {editing === "new-partner" ? (
+        <PartnerEditor
+          partner={null}
+          onCancel={() => setEditing(null)}
+          onSaved={() => {
+            setEditing(null);
+            load();
+          }}
+        />
+      ) : (
+        <button onClick={() => setEditing("new-partner")}>Nouveau fournisseur ou client</button>
+      )}
       <ImportForm path="partners/import/" model="/modeles/partenaires.csv" onDone={load} />
       {partners === null ? (
         <p>Chargement...</p>
@@ -168,18 +439,37 @@ export default function Referentiels() {
               <th>Adresse</th>
               <th>Téléphone</th>
               <th>E-mail</th>
+              <th></th>
             </tr>
           </thead>
           <tbody>
-            {partners.map((p) => (
-              <tr key={p.id} style={{ borderTop: "1px solid #ddd" }}>
-                <td>{p.name}</td>
-                <td>{[p.is_supplier && "Fournisseur", p.is_customer && "Client"].filter(Boolean).join(", ")}</td>
-                <td>{p.address}</td>
-                <td>{p.phone}</td>
-                <td>{p.email}</td>
-              </tr>
-            ))}
+            {partners.map((p) =>
+              editing === p.id ? (
+                <tr key={p.id}>
+                  <td colSpan={6}>
+                    <PartnerEditor
+                      partner={p}
+                      onCancel={() => setEditing(null)}
+                      onSaved={() => {
+                        setEditing(null);
+                        load();
+                      }}
+                    />
+                  </td>
+                </tr>
+              ) : (
+                <tr key={p.id} style={{ borderTop: "1px solid #ddd", opacity: p.is_active ? 1 : 0.5 }}>
+                  <td>{p.name}</td>
+                  <td>{[p.is_supplier && "Fournisseur", p.is_customer && "Client"].filter(Boolean).join(", ")}</td>
+                  <td>{p.address}</td>
+                  <td>{p.phone}</td>
+                  <td>{p.email}</td>
+                  <td>
+                    <button onClick={() => setEditing(p.id)}>Modifier</button>
+                  </td>
+                </tr>
+              )
+            )}
           </tbody>
         </table>
       )}

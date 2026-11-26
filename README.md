@@ -1,7 +1,7 @@
 # KronOps
 
 Logiciel de pilotage de production (MES) pour l'agroalimentaire, vendu en abonnement.
-Ce dépôt contient le socle technique et la première fonction métier : les **référentiels** (US-02 du PRD). Les lots, ordres de fabrication et expéditions ne sont pas encore écrits.
+Ce dépôt contient le socle technique et les premières fonctions métier : les **référentiels** (US-02) et l'écran du **journal d'audit** (US-03). Les lots, ordres de fabrication et expéditions ne sont pas encore écrits.
 
 ## Ce que le socle contient déjà
 
@@ -16,7 +16,8 @@ Ce dépôt contient le socle technique et la première fonction métier : les **
 | Point de contrôle `/api/v1/health/` | Indique si le service et la base répondent |
 | Documentation de l'API | Générée automatiquement, visible sur `/api/v1/docs/` |
 | Référentiels (US-02) | Articles (matière, emballage, semi-fini, produit fini), allergènes obligatoires pour les matières (14 allergènes UE), conversions d'unités (1 sac = 25 kg), fournisseurs et clients, import CSV tout ou rien. Écran : http://localhost:3000/referentiels |
-| Tests automatiques | 72 tests, dont l'isolation entre clients et l'immuabilité de l'audit |
+| Journal d'audit (US-03) | Qui a créé, modifié ou importé quoi, quand, avec l'ancienne et la nouvelle valeur. Filtres par objet, action, utilisateur et dates. Lecture seule, rôles Admin et Qualité. Écran : http://localhost:3000/journal |
+| Tests automatiques | 84 tests, dont l'isolation entre clients et l'immuabilité de l'audit |
 
 ## Lancer KronOps sur ton ordinateur
 
@@ -71,7 +72,7 @@ Le mot de passe est demandé au clavier (10 caractères minimum, rien ne s'affic
 
 Sur Windows, utilise plutôt : `docker compose run --rm backend sh -c 'DB_USER=$DB_OWNER_USER DB_PASSWORD=$DB_OWNER_PASSWORD python -m pytest'`
 
-Tu dois voir `72 passed` à la fin (ou `70 passed, 2 skipped` dans Docker). **Si un test échoue après une modification faite avec l'IA, la modification est fausse** : ne la garde pas.
+Tu dois voir `84 passed` à la fin (ou `82 passed, 2 skipped` dans Docker). **Si un test échoue après une modification faite avec l'IA, la modification est fausse** : ne la garde pas.
 
 ### 7. Essayer les référentiels
 
@@ -82,6 +83,16 @@ Tu dois voir `72 passed` à la fin (ou `70 passed, 2 skipped` dans Docker). **Si
 
 Format du fichier articles : séparateur `;` ou `,`, une ligne d'en-tête. Colonnes obligatoires `code`, `nom`, `type` (matiere, emballage, semi_fini, fini), `unite` (kg, l, unite). Colonnes facultatives `duree_vie_jours`, `conservation` (ambiant, refrigere, congele) et une colonne par allergène (`gluten`, `crustaces`, `oeufs`, `poissons`, `arachides`, `soja`, `lait`, `fruits_a_coque`, `celeri`, `moutarde`, `sesame`, `sulfites`, `lupin`, `mollusques`) avec `contient`, `peut_contenir` ou `absent`. Pour une matière, les 14 colonnes sont obligatoires.
 
+### 8. Écran rapide (mode production)
+
+Par défaut, l'écran tourne en mode développement : chaque page est compilée à sa première visite, ce qui ralentit la navigation, surtout sous Docker Desktop Windows. Pour juger de la vraie vitesse, lance l'écran déjà compilé :
+
+```
+docker compose -f docker-compose.yml -f docker-compose.front-prod.yml up --build -d
+```
+
+La première fois, la compilation prend une ou deux minutes. Ensuite, chaque modification du code de l'écran (par exemple après un `git pull`) demande de relancer la même commande. Pour revenir au mode développement : `docker compose up --build -d`.
+
 ## En cas de problème
 
 | Message | Cause probable | Solution |
@@ -91,6 +102,8 @@ Format du fichier articles : séparateur `;` ou `,`, une ligne d'en-tête. Colon
 | `Variable d'environnement manquante` | Le fichier `.env` n'existe pas ou est incomplet | Refais l'étape 3 |
 | `ERREUR DE CONFIGURATION (fichier .env)` | Un nom a été modifié ou un mot de passe contient autre chose que des lettres et des chiffres | Corrige `.env` comme indiqué, puis `docker compose down -v` et `docker compose up --build` |
 | `role ... already exists`, `database "kronops" does not exist` ou `password authentication failed` en boucle | La base a été créée avec une ancienne version de `.env` | `docker compose down -v` puis `docker compose up --build` |
+| Après un `git pull`, l'écran ne change pas, même avec `Ctrl + F5` | Sous Windows et Mac, Docker Desktop ne prévient pas toujours Next.js qu'un fichier a changé (limite documentée par Next.js) | `docker compose restart frontend`, attends « Ready » dans le terminal, puis recharge la page |
+| Passer d'une page à l'autre prend plusieurs secondes | Le mode développement compile les pages à la demande | Lance l'écran en mode production (étape 8) |
 | La page affiche « Service : injoignable » | L'API n'a pas fini de démarrer | Attends 30 secondes et recharge la page |
 | Tout est cassé et tu veux repartir de zéro | | `docker compose down -v` puis `docker compose up --build`. **Attention : efface toutes les données locales.** |
 
@@ -101,10 +114,10 @@ backend/            API Django
   config/           réglages et adresses (URL)
   core/             socle commun : modèle de base, contexte client, RLS, health check
   tenants/          entreprises, sites, utilisateurs, rôles, connexion
-  audit/            journal d'audit en insertion seule
+  audit/            journal d'audit en insertion seule, et son API de lecture
   events/           table d'événements (outbox)
   catalog/          référentiels : articles, allergènes, conversions d'unités, fournisseurs et clients
-frontend/           écrans Next.js (accueil, référentiels) et modèles CSV dans public/modeles/
+frontend/           écrans Next.js (accueil, référentiels, journal d'audit) et modèles CSV dans public/modeles/
 docker/             script de création des rôles PostgreSQL
 scripts/test.sh     lance les tests
 CLAUDE.md           règles à respecter par l'assistant IA
