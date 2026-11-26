@@ -1,0 +1,12 @@
+# Lance l'ecran en mode production (pages compilees a l'avance, navigation rapide).
+# Utilisation :
+#   docker compose -f docker-compose.yml -f docker-compose.front-prod.yml up --build -d
+# Inconvenient : une modification du code de l'ecran demande de relancer la meme commande.
+# Pour revenir au mode developpement : docker compose up --build -d
+services:
+  frontend:
+    build:
+      context: ./frontend
+      target: prod
+    # Pas de dossier monte : le conteneur utilise le code compile dans l'image.
+    volumes: !reset []

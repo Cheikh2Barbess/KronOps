@@ -83,6 +83,16 @@ Tu dois voir `84 passed` à la fin (ou `82 passed, 2 skipped` dans Docker). **Si
 
 Format du fichier articles : séparateur `;` ou `,`, une ligne d'en-tête. Colonnes obligatoires `code`, `nom`, `type` (matiere, emballage, semi_fini, fini), `unite` (kg, l, unite). Colonnes facultatives `duree_vie_jours`, `conservation` (ambiant, refrigere, congele) et une colonne par allergène (`gluten`, `crustaces`, `oeufs`, `poissons`, `arachides`, `soja`, `lait`, `fruits_a_coque`, `celeri`, `moutarde`, `sesame`, `sulfites`, `lupin`, `mollusques`) avec `contient`, `peut_contenir` ou `absent`. Pour une matière, les 14 colonnes sont obligatoires.
 
+### 8. Écran rapide (mode production)
+
+Par défaut, l'écran tourne en mode développement : chaque page est compilée à sa première visite, ce qui ralentit la navigation, surtout sous Docker Desktop Windows. Pour juger de la vraie vitesse, lance l'écran déjà compilé :
+
+```
+docker compose -f docker-compose.yml -f docker-compose.front-prod.yml up --build -d
+```
+
+La première fois, la compilation prend une ou deux minutes. Ensuite, chaque modification du code de l'écran (par exemple après un `git pull`) demande de relancer la même commande. Pour revenir au mode développement : `docker compose up --build -d`.
+
 ## En cas de problème
 
 | Message | Cause probable | Solution |
@@ -93,6 +103,7 @@ Format du fichier articles : séparateur `;` ou `,`, une ligne d'en-tête. Colon
 | `ERREUR DE CONFIGURATION (fichier .env)` | Un nom a été modifié ou un mot de passe contient autre chose que des lettres et des chiffres | Corrige `.env` comme indiqué, puis `docker compose down -v` et `docker compose up --build` |
 | `role ... already exists`, `database "kronops" does not exist` ou `password authentication failed` en boucle | La base a été créée avec une ancienne version de `.env` | `docker compose down -v` puis `docker compose up --build` |
 | Après un `git pull`, l'écran ne change pas, même avec `Ctrl + F5` | Sous Windows et Mac, Docker Desktop ne prévient pas toujours Next.js qu'un fichier a changé (limite documentée par Next.js) | `docker compose restart frontend`, attends « Ready » dans le terminal, puis recharge la page |
+| Passer d'une page à l'autre prend plusieurs secondes | Le mode développement compile les pages à la demande | Lance l'écran en mode production (étape 8) |
 | La page affiche « Service : injoignable » | L'API n'a pas fini de démarrer | Attends 30 secondes et recharge la page |
 | Tout est cassé et tu veux repartir de zéro | | `docker compose down -v` puis `docker compose up --build`. **Attention : efface toutes les données locales.** |
 
