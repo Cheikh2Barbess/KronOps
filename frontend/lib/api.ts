@@ -16,7 +16,8 @@ export async function api<T>(path: string, options: RequestInit = {}): Promise<T
   const method = (options.method || "GET").toUpperCase();
   const headers = new Headers(options.headers);
   headers.set("Accept", "application/json");
-  if (options.body) headers.set("Content-Type", "application/json");
+  // Un fichier (FormData) : le navigateur pose lui-meme le bon Content-Type.
+  if (options.body && !(options.body instanceof FormData)) headers.set("Content-Type", "application/json");
   if (!["GET", "HEAD", "OPTIONS"].includes(method)) {
     if (!readCookie("csrftoken")) await fetch("/api/v1/auth/csrf/", { credentials: "same-origin" });
     headers.set("X-CSRFToken", readCookie("csrftoken") || "");

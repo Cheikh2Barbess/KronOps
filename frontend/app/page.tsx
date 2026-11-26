@@ -1,7 +1,7 @@
 "use client";
 
 // Page de demonstration du socle : etat du service, connexion, utilisateur courant.
-// Aucune fonctionnalite metier ici.
+// Lien vers les referentiels une fois connecte.
 import { FormEvent, useEffect, useState } from "react";
 import { api, ApiError } from "@/lib/api";
 
@@ -49,6 +49,9 @@ export default function Home() {
         <section>
           <p>
             Connecté : <strong>{me.username}</strong> ({me.role}) chez <strong>{me.tenant_name}</strong>
+          </p>
+          <p>
+            <a href="/referentiels">Référentiels : articles, fournisseurs et clients</a>
           </p>
           <button onClick={onLogout}>Se déconnecter</button>
         </section>
