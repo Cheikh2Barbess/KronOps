@@ -8,17 +8,26 @@ import { api, ApiError } from "@/lib/api";
 
 type Me = { username: string; role: string; tenant_name: string };
 type Health = { status: string; database: string };
+type PipelineBlock = { steps: { code: string; is_active: boolean }[] };
 
 export default function Home() {
   const [health, setHealth] = useState<Health | null>(null);
   // undefined = on ne sait pas encore (verification en cours), null = pas connecte.
   const [me, setMe] = useState<Me | null | undefined>(undefined);
   const [error, setError] = useState<string | null>(null);
+  // Modules facultatifs desactives dans l'ecran Pipeline : leur lien n'est pas affiche.
+  const [off, setOff] = useState<string[]>([]);
 
   useEffect(() => {
     api<Health>("health/").then(setHealth).catch(() => setHealth({ status: "injoignable", database: "?" }));
     api<Me>("auth/me/").then(setMe).catch(() => setMe(null));
   }, []);
+  useEffect(() => {
+    if (!me) return;
+    api<PipelineBlock[]>("production/pipeline/")
+      .then((blocks) => setOff(blocks.flatMap((b) => b.steps).filter((s) => !s.is_active).map((s) => s.code)))
+      .catch(() => setOff([]));
+  }, [me]);
 
   async function onLogin(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -57,6 +66,9 @@ export default function Home() {
           <p>
             <a href="/referentiels">Référentiels : articles, fournisseurs, clients, parcelles, sites et équipements</a>
           </p>
+          <p>
+            <a href="/pipeline">Pipeline : les 8 blocs, du producteur au conteneur</a>
+          </p>
           {["admin", "qualite", "production", "lecture"].includes(me.role) && (
             <p>
               <a href="/tracabilite">Traçabilité : recherche amont et aval</a>
@@ -72,7 +84,7 @@ export default function Home() {
               <a href="/production">Production : déclarer une étape (mûrissement, séchage, cartons, palette)</a>
             </p>
           )}
-          {["admin", "production", "operateur"].includes(me.role) && (
+          {["admin", "production", "operateur"].includes(me.role) && !off.includes("transfert") && (
             <p>
               <a href="/transferts">Transferts : envoyer un lot vers une autre usine</a>
             </p>
@@ -82,7 +94,7 @@ export default function Home() {
               <a href="/qualite">Contrôle qualité d&apos;un lot</a>
             </p>
           )}
-          {["admin", "production"].includes(me.role) && (
+          {["admin", "production"].includes(me.role) && !off.includes("expedition") && (
             <p>
               <a href="/expeditions">Expéditions : conteneur, plomb, certificat d&apos;inspection</a>
             </p>

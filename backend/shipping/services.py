@@ -10,6 +10,7 @@ from events.services import publish_event
 from lots import selectors as lot_selectors
 from lots import services as lots
 from lots.models import Movement
+from production.pipeline import require_module
 from shipping.models import Shipment, ShipmentLine
 
 # Format ISO 6346 : 3 lettres du proprietaire, 1 lettre de categorie, 6 chiffres et 1 chiffre de controle.
@@ -63,6 +64,7 @@ def _values(shipment):
 def create_shipment(*, tenant_id, user, customer, lines, shipped_at=None, container_number="", seal_number="",
                     export_document_ref="", bill_of_lading="", site=None, late_reason_code="", late_comment=""):
     """Expedition d'un ou plusieurs lots (palettes, cartons) vers un client. `lines` = [(lot, quantite, unite)]."""
+    require_module("expedition")
     errors = {}
     if not customer.is_customer:
         errors["customer"] = ["Ce partenaire n'est pas un client."]

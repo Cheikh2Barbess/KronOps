@@ -265,3 +265,24 @@ class RouteDetailView(TenantAPIView):
         data["articles"] = _route_articles(data["articles"])
         services.update_route(tenant_id=request.user.tenant_id, user=request.user, route=route, **data)
         return Response(RouteSerializer(selectors.route_or_404(route_id=pk)).data)
+
+
+class PipelineView(TenantAPIView):
+    """Pipeline en 8 blocs : lecture pour tous les roles (l'accueil masque les ecrans desactives), reglage Admin."""
+
+    def get_permissions(self):
+        if self.request.method == "GET":
+            return [IsAuthenticated(), ProductionPermission()]
+        return [IsAuthenticated(), IsTenantAdmin()]
+
+    @extend_schema(responses={200: dict})
+    def get(self, request):
+        return Response(selectors.pipeline())
+
+    @extend_schema(request=StepConfigureSerializer, responses={200: dict})
+    def put(self, request):
+        serializer = StepConfigureSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        services.configure_pipeline(tenant_id=request.user.tenant_id, user=request.user,
+                                    steps=serializer.validated_data["steps"])
+        return Response(selectors.pipeline())

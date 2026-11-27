@@ -187,3 +187,17 @@ class RouteArticle(TenantModel):
     class Meta:
         verbose_name = "article d'un parcours"
         constraints = [models.UniqueConstraint(fields=["tenant", "article"], name="routearticle_unique_article")]
+
+
+class PipelineSetting(TenantModel):
+    """Activation d'un module facultatif du pipeline (voir production/pipeline.py). Actif sans ligne."""
+
+    code = models.CharField("code", max_length=40)
+    is_active = models.BooleanField("actif", default=True)
+
+    class Meta:
+        verbose_name = "réglage du pipeline"
+        constraints = [models.UniqueConstraint(fields=["tenant", "code"], name="pipelinesetting_unique_code")]
+
+    def __str__(self):
+        return self.code

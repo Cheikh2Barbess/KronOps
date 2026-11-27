@@ -157,7 +157,7 @@ class StepSettingSerializer(serializers.Serializer):
 
 
 class StepChoiceSerializer(serializers.Serializer):
-    code = serializers.CharField(max_length=20)
+    code = serializers.CharField(max_length=40)
     is_active = serializers.BooleanField()
 
 

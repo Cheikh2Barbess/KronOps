@@ -21,6 +21,7 @@ from lots.models import Lot, LotLink, Movement
 from production import reasons
 from production.models import (
     Equipment,
+    PipelineSetting,
     ProductionInput,
     ProductionRun,
     ProductRoute,
@@ -438,3 +439,51 @@ def update_route(*, tenant_id, user, route, name, steps, articles, is_active):
         publish_event(tenant_id=tenant_id, event_type="production.route_updated",
                       payload={"route_id": str(route.id), "steps": new["steps"], "is_active": is_active})
     return route
+
+
+@transaction.atomic
+def configure_pipeline(*, tenant_id, user, steps):
+    """Active ou desactive des etapes du pipeline. `steps` = liste de {"code", "is_active"} (seulement les changements).
+
+    Etape de production : passe par configure_steps (meme reglage que l'ecran des etapes, ordre garde).
+    Module facultatif : PipelineSetting. Etape obligatoire ou prevue : refusee.
+    """
+    from production.pipeline import BY_CODE, Kind
+    from production.selectors import step_catalog
+
+    codes = [s["code"] for s in steps]
+    if not steps:
+        raise ValidationError({"steps": ["Aucun changement."]})
+    if len(set(codes)) != len(codes):
+        raise ValidationError({"steps": ["Une même étape apparaît deux fois."]})
+    unknown = [c for c in codes if c not in BY_CODE]
+    if unknown:
+        raise ValidationError({"steps": [f"Étape inconnue : {', '.join(unknown)}."]})
+    locked = [BY_CODE[c]["label"] for c in codes if BY_CODE[c]["kind"] in (Kind.OBLIGATOIRE, Kind.PREVU)]
+    if locked:
+        raise ValidationError({"steps": [f"Étape non modifiable (toujours active ou pas encore construite) : "
+                                         f"{', '.join(locked)}."]})
+
+    wanted = {s["code"]: bool(s["is_active"]) for s in steps}
+    production = {c: a for c, a in wanted.items() if BY_CODE[c]["kind"] == Kind.TRANSFORMATION}
+    if production:
+        rows = step_catalog()
+        configure_steps(tenant_id=tenant_id, user=user, steps=[
+            {"code": r["code"], "is_active": production.get(r["code"], r["is_active"])} for r in rows
+        ])
+    existing = {p.code: p for p in PipelineSetting.objects.select_for_update()}
+    for code, is_active in wanted.items():
+        if BY_CODE[code]["kind"] != Kind.MODULE:
+            continue
+        setting = existing.get(code)
+        if setting is None:
+            setting = PipelineSetting.objects.create(tenant_id=tenant_id, code=code, is_active=is_active)
+            record_audit(tenant_id=tenant_id, user=user, action="create", entity=setting,
+                         new_values={"code": code, "is_active": is_active})
+        elif setting.is_active != is_active:
+            old = {"code": code, "is_active": setting.is_active}
+            setting.is_active = is_active
+            setting.save(update_fields=["is_active", "updated_at"])
+            record_audit(tenant_id=tenant_id, user=user, action="update", entity=setting, old_values=old,
+                         new_values={"code": code, "is_active": is_active})
+    publish_event(tenant_id=tenant_id, event_type="production.pipeline_configured", payload={"changes": wanted})
