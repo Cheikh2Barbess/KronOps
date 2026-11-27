@@ -9,3 +9,12 @@ WASTE = {
     "chutes": "Chutes et miettes",
     OTHER: "Autre (préciser)",
 }
+
+# Annulation d'une declaration (sous-ensemble des motifs d'annulation de mouvement, memes codes).
+RUN_CANCEL = {
+    "erreur_saisie": "Erreur de saisie",
+    "mauvais_lot": "Mauvais lot consommé",
+    "mauvaise_quantite": "Mauvaise quantité",
+    "doublon": "Déclaration en double",
+    OTHER: "Autre (préciser)",
+}

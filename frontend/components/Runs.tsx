@@ -29,9 +29,19 @@ export type Run = {
   late: boolean;
   late_reason_label: string;
   username: string | null;
+  cancellable?: boolean | null;
+  cancelled: { at: string; by: string | null; reason_code: string; reason: string } | null;
 };
 
 export function YieldCell({ run }: { run: Run }) {
+  if (run.cancelled)
+    return (
+      <span style={{ color: "#b00020" }}>
+        <strong>Annulée</strong>
+        <br />
+        <small>{run.cancelled.reason}</small>
+      </span>
+    );
   if (run.yield_pct === null) return <span>sans objet</span>;
   const ratio = Number(run.yield_pct) > 0 ? 100 / Number(run.yield_pct) : null;
   const color = run.yield_status === "conforme" ? "#1b5e20" : run.yield_status === "sans_reference" ? "#555" : "#b00020";

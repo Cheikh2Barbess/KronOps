@@ -21,6 +21,11 @@ def run(client, step, article, kg, inputs, unit="", equipment=None):
     return response.json()
 
 
+def qc_ok(client, lot_id):
+    response = client.post(f"/api/v1/lots/{lot_id}/quality-checks/", {"checks": {"humidite": "ok"}}, format="json")
+    assert response.status_code == 201, response.json()
+
+
 @pytest.fixture
 def chain(client_a, orchard, receive_fresh):
     """Deux parcelles bio, un lot mis en commun, reparti sur deux sechoirs, cartons, une palette."""
@@ -30,11 +35,13 @@ def chain(client_a, orchard, receive_fresh):
     d2 = run(client_a, "sechage", orchard["dried"], "95", [(b.id, "1300")], equipment=orchard["dryer2"])
     c1 = run(client_a, "conditionnement", orchard["carton"], "10", [(d1["output_lot_id"], "100")], unit="carton")
     c2 = run(client_a, "conditionnement", orchard["carton"], "9", [(d2["output_lot_id"], "90")], unit="carton")
+    for c in (c1, c2):
+        qc_ok(client_a, c["output_lot_id"])
     return {"a": a, "b": b, "d1": d1, "d2": d2, "c1": c1, "c2": c2}
 
 
 def ship(client, orchard, lots, **extra):
-    data = {"customer": str(orchard["customer"].id), "container_number": "mscu 123456-7", "seal_number": "S-889",
+    data = {"customer": str(orchard["customer"].id), "container_number": "mscu 123456-6", "seal_number": "S-889",
             "export_document_ref": "COI.CI.2026.0001",
             "lines": [{"lot": lot_id, "quantity": q, "unit": "carton"} for lot_id, q in lots]}
     data.update(extra)
@@ -79,7 +86,7 @@ def test_shipment_by_container_creates_exit_movements(client_a, orchard, chain, 
     response = ship(client_a, orchard, [(chain["c1"]["output_lot_id"], "10"), (chain["c2"]["output_lot_id"], "4")])
     assert response.status_code == 201, response.json()
     body = response.json()
-    assert body["container_number"] == "MSCU1234567"
+    assert body["container_number"] == "MSCU1234566"
     assert {Decimal(line["quantity"]) for line in body["lines"]} == {Decimal("100"), Decimal("40")}
     with tenant_context(tenant_a.id):
         from lots.selectors import lot_balance
@@ -115,7 +122,7 @@ def test_recall_from_a_carton_reaches_parcel_and_container(client_a, orchard, ch
     assert [r["parcel_code"] for r in body["roots"]] == ["P-BIO"]
     assert body["roots"][0]["organic_status"] == "bio"
     assert Decimal(body["roots"][0]["received_quantity"]) == 1300
-    assert [s["container_number"] for s in body["shipments"]] == ["MSCU1234567"]
+    assert [s["container_number"] for s in body["shipments"]] == ["MSCU1234566"]
     assert body["shipments"][0]["export_document_ref"] == "COI.CI.2026.0001"
     assert body["summary"]["customers"] == 1
     steps = [r["step"] for r in body["runs"]]
@@ -137,8 +144,8 @@ def test_recall_scope_includes_every_load_from_the_same_raw_lot(client_a, orchar
 
 def test_recall_from_a_container_number(client_a, orchard, chain):
     ship(client_a, orchard, [(chain["c1"]["output_lot_id"], "2"), (chain["c2"]["output_lot_id"], "2")])
-    body = client_a.get(RECALL, {"search": "MSCU1234567"}).json()
-    assert body["container"] == "MSCU1234567"
+    body = client_a.get(RECALL, {"search": "MSCU1234566"}).json()
+    assert body["container"] == "MSCU1234566"
     assert {r["parcel_code"] for r in body["roots"]} == {"P-BIO", "P-BIO2"}
     assert body["summary"]["parcels"] == 2
 
@@ -157,3 +164,32 @@ def test_operator_has_no_access_to_recall(tenant_a, chain):
     client = APIClient()
     client.force_authenticate(make_user(tenant_a, "op2", role=User.Role.OPERATEUR))
     assert client.get(RECALL, {"search": chain["c1"]["output_lot_code"]}).status_code == 403
+
+
+# Controle qualite obligatoire, conteneur ----------------------------------------
+
+
+def test_never_checked_lot_cannot_be_shipped(client_a, orchard, chain, receive_fresh):
+    fresh = receive_fresh(orchard["p_bio"], "1300")
+    dried = run(client_a, "sechage", orchard["dried"], "90", [(fresh.id, "1300")], equipment=orchard["dryer1"])
+    carton = run(client_a, "conditionnement", orchard["carton"], "9", [(dried["output_lot_id"], "90")], unit="carton")
+    response = ship(client_a, orchard, [(carton["output_lot_id"], "9")])
+    assert response.status_code == 400
+    assert "jamais été contrôlé" in response.json()["lines"][0]
+    qc_ok(client_a, carton["output_lot_id"])
+    assert ship(client_a, orchard, [(carton["output_lot_id"], "9")]).status_code == 201
+
+
+def test_pallet_of_checked_cartons_can_be_shipped(client_a, orchard, chain):
+    pallet = run(client_a, "palettisation", orchard["carton"], "190",
+                 [(chain["c1"]["output_lot_id"], "100"), (chain["c2"]["output_lot_id"], "90")])
+    response = ship(client_a, orchard, [(pallet["output_lot_id"], "19")])
+    assert response.status_code == 201, response.json()
+
+
+def test_container_check_digit_is_verified(client_a, orchard, chain):
+    from shipping.services import container_check_digit
+
+    assert container_check_digit("CSQU305438") == 3
+    wrong = ship(client_a, orchard, [(chain["c1"]["output_lot_id"], "1")], container_number="MSCU1234567")
+    assert wrong.status_code == 400 and "chiffre de contrôle" in wrong.json()["container_number"][0]

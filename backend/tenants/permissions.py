@@ -122,6 +122,15 @@ class ProductionPermission(BasePermission):
         return has_role(request.user, R.ADMIN, R.PRODUCTION, R.OPERATEUR)
 
 
+class RunCancelPermission(BasePermission):
+    """Annuler une declaration : un responsable (Admin, Production), pas l'operateur seul."""
+
+    message = "Seuls les rôles Admin et Production annulent une déclaration."
+
+    def has_permission(self, request, view):
+        return has_role(request.user, R.ADMIN, R.PRODUCTION)
+
+
 class MaterialBalancePermission(BasePermission):
     message = "Le bilan matière n'est pas ouvert à votre rôle."
 

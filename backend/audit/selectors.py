@@ -90,6 +90,10 @@ def describe(entries):
     for run in Run.objects.filter(pk__in=ids).select_related("output_lot__article"):
         names[str(run.pk)] = f"{run.get_step_display()} · {run.output_lot.code}"
         units[str(run.pk)] = run.output_lot.article.base_unit
+    Transfer = apps.get_model("lots", "LotTransfer")
+    for t in Transfer.objects.filter(pk__in=ids).select_related("lot__article", "to_site"):
+        names[str(t.pk)] = f"{t.lot.code} → {t.to_site.name}"
+        units[str(t.pk)] = t.lot.article.base_unit
     for shipment in Shipment.objects.filter(pk__in=ids).select_related("customer"):
         names[str(shipment.pk)] = f"{shipment.customer.name}" + (
             f" · {shipment.container_number}" if shipment.container_number else ""

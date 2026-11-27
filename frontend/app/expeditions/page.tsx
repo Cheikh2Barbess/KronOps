@@ -14,8 +14,11 @@ type Lot = {
   base_unit: string;
   organic_status: string;
   balance: string;
+  site: string | null;
   site_name: string | null;
   quality_result: string | null;
+  quality_ok: boolean;
+  quality_reason: string;
   conversions: Conversion[];
 };
 type Options = { customers: { id: string; name: string; city: string }[]; sites: { id: string; name: string }[]; lots: Lot[]; late_reasons: Option[] };
@@ -38,6 +41,7 @@ export default function Expeditions() {
   const [shipments, setShipments] = useState<Shipment[]>([]);
   const [lines, setLines] = useState<Record<string, Line>>({});
   const [coi, setCoi] = useState("");
+  const [siteId, setSiteId] = useState("");
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [formKey, setFormKey] = useState(0);
@@ -51,7 +55,7 @@ export default function Expeditions() {
   const picked = Object.entries(lines).filter(([, l]) => Number(l.quantity.replace(",", ".")) > 0);
   const lotById = Object.fromEntries((options?.lots || []).map((l) => [l.id, l]));
   const pickedLots = picked.map(([id]) => lotById[id]).filter(Boolean);
-  const unchecked = pickedLots.filter((l) => l.quality_result !== "conforme");
+  const unchecked = pickedLots.filter((l) => !l.quality_ok);
   const bio = pickedLots.some((l) => l.organic_status === "bio" || l.organic_status === "conversion");
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
@@ -68,7 +72,7 @@ export default function Expeditions() {
       lines: picked.map(([lot, l]) => ({ lot, quantity: l.quantity.replace(",", "."), unit: l.unit })),
       ...late,
     };
-    if (form.get("site")) payload.site = form.get("site");
+    if (siteId) payload.site = siteId;
     if (late.occurred_at) {
       payload.shipped_at = late.occurred_at;
       delete payload.occurred_at;
@@ -111,7 +115,7 @@ export default function Expeditions() {
             {options.sites.length > 1 && (
               <label>
                 Site de départ{" "}
-                <select name="site" required defaultValue="">
+                <select name="site" required value={siteId} onChange={(e) => setSiteId(e.target.value)}>
                   <option value="" disabled>
                     (choisir)
                   </option>
@@ -139,7 +143,7 @@ export default function Expeditions() {
                 </tr>
               </thead>
               <tbody>
-                {options.lots.map((l) => {
+                {options.lots.filter((l) => !siteId || !l.site || l.site === siteId).map((l) => {
                   const line = lines[l.id] || { quantity: "", unit: l.conversions[0]?.unit_name || l.base_unit };
                   const set = (patch: Partial<Line>) => setLines((old) => ({ ...old, [l.id]: { ...line, ...patch } }));
                   return (
@@ -156,11 +160,17 @@ export default function Expeditions() {
                         <OrganicBadge status={l.organic_status} />
                       </td>
                       <td>{withUnit(l.balance, l.base_unit)}</td>
-                      <td style={{ color: l.quality_result === "conforme" ? "#1b5e20" : "#8a5a00" }}>
-                        {l.quality_result === "conforme" ? "Conforme" : "Aucun contrôle"}
+                      <td style={{ color: l.quality_ok ? "#1b5e20" : "#b00020" }}>
+                        {l.quality_ok ? "Conforme" : "Expédition refusée"}
+                        {l.quality_reason && (
+                          <>
+                            <br />
+                            <small>{l.quality_reason}</small>
+                          </>
+                        )}
                       </td>
                       <td>
-                        <input aria-label={`Quantité ${l.code}`} value={line.quantity} onChange={(e) => set({ quantity: e.target.value })} inputMode="decimal" style={{ width: 80 }} />{" "}
+                        <input aria-label={`Quantité ${l.code}`} disabled={!l.quality_ok} value={line.quantity} onChange={(e) => set({ quantity: e.target.value })} inputMode="decimal" style={{ width: 80 }} />{" "}
                         <select aria-label="Unité" value={line.unit} onChange={(e) => set({ unit: e.target.value })}>
                           <option value={l.base_unit}>{withUnit(2, l.base_unit).replace(/^2 /, "")}</option>
                           {l.conversions.map((c) => (
@@ -180,11 +190,14 @@ export default function Expeditions() {
             </table>
           )}
           {unchecked.length > 0 && (
-            <p style={{ color: "#8a5a00" }}>Attention : {unchecked.map((l) => l.code).join(", ")} sans contrôle qualité conforme.</p>
+            <p style={{ color: "#b00020" }}>
+              {unchecked.map((l) => l.code).join(", ")} : pas de contrôle qualité conforme, l&apos;expédition sera refusée. Faites d&apos;abord le{" "}
+              <a href="/qualite">contrôle qualité</a>.
+            </p>
           )}
           <div style={{ display: "flex", flexWrap: "wrap", gap: 12 }}>
             <label>
-              N° de conteneur <input name="container_number" placeholder="ABCU1234567" maxLength={20} style={{ width: 130 }} />
+              N° de conteneur <input name="container_number" placeholder="CSQU3054383" maxLength={20} style={{ width: 130 }} />
             </label>
             <label>
               N° de plomb <input name="seal_number" maxLength={40} style={{ width: 130 }} />

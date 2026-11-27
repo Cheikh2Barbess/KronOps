@@ -19,6 +19,7 @@ type Article = {
   article_type: string;
   base_unit: string;
   storage: string;
+  shelf_life_days: number | null;
   conversions: Conversion[];
 };
 type Parcel = { id: string; code: string; locality: string; organic_status: string };
@@ -122,7 +123,7 @@ function ReceptionForm({ options, onDone }: { options: Options; onDone: (lot: Cr
   const [error, setError] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
   const article = options.articles.find((a) => a.id === articleId);
-  const needsDate = article !== undefined && article.article_type !== "emballage";
+  const needsDate = article !== undefined && article.article_type !== "emballage" && !article.shelf_life_days;
   const needsTemperature = article !== undefined && ["refrigere", "congele"].includes(article.storage);
   const supplier = options.suppliers.find((x) => x.id === supplierId);
   const parcels = supplier?.parcels || [];
@@ -294,7 +295,15 @@ function ReceptionForm({ options, onDone }: { options: Options; onDone: (lot: Cr
             <small style={{ color: "#555" }}>(tel qu&apos;écrit sur l&apos;étiquette, si le fournisseur en donne un)</small>
           </label>
           <div style={row}>
-            <span>5. Date limite{needsDate ? "" : " (facultative pour un emballage)"} :</span>
+            <span>
+              5. Date limite
+              {needsDate
+                ? ""
+                : article?.shelf_life_days
+                  ? ` (facultative : vide, DDM à ${article.shelf_life_days} jours)`
+                  : " (facultative pour un emballage)"}{" "}
+              :
+            </span>
             <label>
               <input type="radio" name="date_type" value="dlc" required={needsDate} /> DLC (à consommer jusqu&apos;au)
             </label>

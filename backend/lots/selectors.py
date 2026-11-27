@@ -198,6 +198,54 @@ def last_quality_checks(lot_ids):
     return latest
 
 
+def transfers(*, limit=100):
+    from lots.models import LotTransfer
+
+    return (
+        LotTransfer.objects.select_related("source_lot", "lot__article", "from_site", "to_site", "user")
+        .order_by("-occurred_at", "-created_at")[:limit]
+    )
+
+
+def transferable_lots():
+    """Lots qui peuvent changer d'usine : du stock, pas detruits (un lot bloque voyage avec son blocage)."""
+    return lots().filter(balance__gt=0).exclude(status=Lot.Status.DETRUIT).order_by("site__name", "article__code", "code")
+
+
+def quality_clearance(lot, _depth=0):
+    """Le lot peut-il partir chez un client du point de vue qualite ? Retourne (ok, explication).
+    L'explication est vide quand le lot a lui-meme un controle conforme.
+
+    - Son dernier controle qualite decide s'il en a un.
+    - Sinon, un lot ne d'un transfert partiel herite du controle du lot d'origine.
+    - Sinon, une palette (palettisation) est controlee quand tous les cartons qui la composent le sont.
+    """
+    from lots.models import QualityCheck
+
+    if _depth > 10:
+        return False, f"Le lot {lot.code} n'a jamais été contrôlé."
+    check = QualityCheck.objects.filter(lot=lot).order_by("-checked_at", "-created_at").first()
+    if check is not None:
+        if check.result == QualityCheck.Result.CONFORME:
+            return True, ""
+        return False, f"Le dernier contrôle qualité du lot {lot.code} est non conforme."
+    transfer = lot.transfers_in.exclude(source_lot=lot).select_related("source_lot").first()
+    if transfer is not None:
+        ok, why = quality_clearance(transfer.source_lot, _depth + 1)
+        return ok, (f"Contrôle du lot d'origine {transfer.source_lot.code}" if ok else why)
+    run = getattr(lot, "production_run", None)
+    if run is not None and run.step == "palettisation" and getattr(run, "cancellation", None) is None:
+        inputs = [i.lot for i in run.inputs.select_related("lot__article")
+                  if i.lot.article.article_type != Article.Type.EMBALLAGE]
+        for child in inputs:
+            ok, why = quality_clearance(child, _depth + 1)
+            if not ok:
+                return False, why
+        if inputs:
+            return True, "Palette : tous les cartons sont contrôlés"
+    return False, f"Le lot {lot.code} n'a jamais été contrôlé : enregistrez d'abord un contrôle qualité."
+
+
 def recall_report(*, origins):
     """Rappel depuis un carton, une palette ou un conteneur.
 

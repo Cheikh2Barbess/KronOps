@@ -20,7 +20,7 @@ Ce dépôt contient le socle technique et les premières fonctions métier : les
 | Référentiels (US-02) | Articles (matière, emballage, semi-fini, produit fini), allergènes obligatoires pour les matières (14 allergènes UE), conversions d'unités (1 sac = 25 kg), fournisseurs et clients, import CSV tout ou rien. Écran : http://localhost:3000/referentiels |
 | Journal d'audit (US-03) | Qui a créé, modifié ou importé quoi, quand, avec l'ancienne et la nouvelle valeur. Filtres par objet, action, utilisateur et dates. Lecture seule, rôles Admin et Qualité. Écran : http://localhost:3000/journal |
 | Lots et traçabilité | Réception d'une livraison fournisseur guidée par listes, avec annulation tant que le lot n'a pas servi (écran : http://localhost:3000/receptions), stock par lot calculé depuis les mouvements, jamais négatif, blocage avec motif, annulation par contre-mouvement. Les motifs (blocage, réception non conforme, annulation, double validation) se choisissent dans des listes fermées, visibles sur http://localhost:3000/api/v1/approvals/reasons/ une fois connecté. Recherche aval (lot fournisseur vers lots produits et clients livrés) et amont. Écran : http://localhost:3000/tracabilite |
-| Tests automatiques | 279 tests, dont l'isolation entre clients et l'immuabilité de l'audit |
+| Tests automatiques | 297 tests, dont l'isolation entre clients et l'immuabilité de l'audit |
 
 ## Lancer Tracalys sur ton ordinateur
 
@@ -171,11 +171,15 @@ Ce que la démo montre en plus :
 
 - **Statut bio par lot** (bio, conversion, conventionnel), repris de la parcelle à la réception. Écran Production : un mélange bio et non bio est refusé (essaie le lot d'ananas du producteur ADI-02, en conversion).
 - **Bilan matière** (http://localhost:3000/bilan) : consommé, produit, déchets, eau évaporée et rendement par étape, écarts en rouge, saisies tardives signalées.
-- **Rappel depuis un carton ou un conteneur** (http://localhost:3000/rappel) : cherche le code carton affiché à la fin de la commande, ou `TRCU2606001`. Le rapport remonte aux parcelles et descend jusqu'aux clients et conteneurs, imprimable en PDF.
+- **Rappel depuis un carton ou un conteneur** (http://localhost:3000/rappel) : cherche le code carton affiché à la fin de la commande, ou `TRCU2606003`. Le rapport remonte aux parcelles et descend jusqu'aux clients et conteneurs, imprimable en PDF.
 - **Saisie au moment du geste** : l'heure est celle du serveur. Une saisie de plus de 2 heures après coup exige un motif choisi dans une liste et reste signalée partout.
-- Écrans **Contrôle qualité** (http://localhost:3000/qualite) et **Expéditions** (http://localhost:3000/expeditions). Parcelles, sites et équipements se gèrent dans les référentiels.
+- Écrans **Contrôle qualité** (http://localhost:3000/qualite) et **Expéditions** (http://localhost:3000/expeditions). Un lot jamais contrôlé ne peut pas être expédié (une palette compte comme contrôlée quand tous ses cartons le sont). Le numéro de conteneur est vérifié, chiffre de contrôle compris. Parcelles, sites et équipements se gèrent dans les référentiels.
+- **Transferts entre usines** (http://localhost:3000/transferts) : tout le lot garde son numéro, une partie devient un nouveau lot relié à l'origine. Un lot se consomme et s'expédie seulement dans l'usine où il se trouve. La démo contient un transfert de cartons vides vers l'usine Sud.
+- **Annulation d'une étape** (écran Production, rôles Admin et Production) : motif choisi dans une liste, quantités rendues au stock, lot produit bloqué, étape gardée et marquée « Annulée ». Possible tant que le lot produit n'a servi à rien. La démo contient un mûrissement annulé pour mauvaise quantité.
+- **Rendement de référence du mûrissement** : il se règle sur l'article « mangue mûre » dans les référentiels. La démo utilise 95 à 100 %, **valeur fictive à remplacer par celle du pilote**.
+- Un fruit frais reçu sans date sur l'étiquette reçoit une DDM calculée depuis la durée de vie de l'article, si elle est renseignée.
 
-Limites connues, dites franchement pendant la démo : pas encore de transfert d'un lot d'une usine à l'autre, pas d'annulation d'une déclaration de production (une erreur se corrige par un ajustement en double validation), pas de rendement de référence pour le mûrissement (à fixer avec le pilote), un contrôle qualité non conforme bloque le lot mais un lot sans contrôle peut partir (simple alerte), et le chiffre de contrôle du numéro de conteneur n'est pas vérifié (seul le format l'est). Le journal date chaque ligne au moment du chargement, pas à la date de juin indiquée sur les mouvements.
+Limites connues, dites franchement pendant la démo : un transfert ne s'annule pas (on fait un transfert retour), et le journal date chaque ligne au moment de la saisie, la date réelle du geste figure sur les mouvements et les étapes.
 
 ## En cas de problème
 

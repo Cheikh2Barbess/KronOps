@@ -91,3 +91,19 @@ class ProductionInput(TenantModel):
             models.UniqueConstraint(fields=["run", "lot"], name="run_input_unique_lot"),
             models.CheckConstraint(condition=Q(quantity__gt=0), name="run_input_positive"),
         ]
+
+
+class RunCancellation(TenantModel):
+    """Annulation d'une declaration. INSERTION SEULE : la declaration reste visible, marquee annulee.
+
+    Les consommations et la production sont defaites par des contre-mouvements (annulation), le lot produit
+    est bloque avec le motif « déclaration annulée ».
+    """
+
+    run = models.OneToOneField(ProductionRun, on_delete=models.PROTECT, related_name="cancellation")
+    reason_code = models.CharField("motif (code)", max_length=40)
+    comment = models.TextField("précision", blank=True)
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, null=True, related_name="+")
+
+    class Meta:
+        verbose_name = "annulation de déclaration"

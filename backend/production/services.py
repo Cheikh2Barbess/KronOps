@@ -17,9 +17,9 @@ from catalog.models import Article, OrganicStatus
 from events.services import publish_event
 from lots import reasons as lot_reasons
 from lots import services as lots
-from lots.models import Lot, Movement
+from lots.models import Lot, LotLink, Movement
 from production import reasons
-from production.models import Equipment, ProductionInput, ProductionRun
+from production.models import Equipment, ProductionInput, ProductionRun, RunCancellation
 
 ORGANIC_LABEL = dict(OrganicStatus.choices)
 
@@ -109,7 +109,14 @@ def declare_run(*, tenant_id, user, step, inputs, output_article, output_quantit
             raise ValidationError({"inputs": [f"Quantité consommée du lot {lot.code} : strictement positive."]})
         if qty != qty.quantize(lots.THOUSANDTH):
             raise ValidationError({"inputs": ["3 décimales au maximum."]})
-        locked.append((Lot.objects.select_for_update().select_related("article").get(pk=lot.pk), qty))
+        locked.append((Lot.objects.select_for_update(of=("self",)).select_related("article", "site").get(pk=lot.pk), qty))
+    if site is not None:
+        elsewhere = [lot for lot, _ in locked if lot.site_id and lot.site_id != site.id]
+        if elsewhere:
+            lot = elsewhere[0]
+            raise ValidationError({"inputs": [
+                f"Le lot {lot.code} est à {lot.site.name}, pas à {site.name} : transférez-le d'abord."
+            ]})
     status = output_organic_status([lot for lot, _ in locked])
 
     mass_in = sum((qty for lot, qty in locked if counts_in_balance(lot, output_article)), Decimal("0"))
@@ -163,6 +170,51 @@ def declare_run(*, tenant_id, user, step, inputs, output_article, output_quantit
             "yield_pct": str((run.output_quantity * 100 / run.input_quantity).quantize(Decimal("0.01"))),
         })
     return run
+
+
+@transaction.atomic
+def cancel_run(*, tenant_id, user, run_id, reason_code, comment=""):
+    """Annule une declaration tant que le lot produit n'a servi a rien.
+
+    Rien n'est efface : chaque consommation et la production recoivent un contre-mouvement, le lot produit est
+    bloque (motif « déclaration annulée »), et une ligne d'annulation garde qui, quand et pourquoi.
+    """
+    reason_code, comment = lot_reasons.check(reasons.RUN_CANCEL, reason_code, comment)
+    # La table des declarations est en insertion seule (pas de verrou FOR UPDATE possible) : on verrouille le lot
+    # produit, ce qui suffit a eviter deux annulations simultanees (et l'unicite de RunCancellation.run).
+    run = ProductionRun.objects.filter(pk=run_id).first()
+    if run is None:
+        raise ValidationError({"run": ["Déclaration introuvable."]})
+    output = Lot.objects.select_for_update().get(pk=run.output_lot_id)
+    if RunCancellation.objects.filter(run=run).exists():
+        raise ValidationError({"run": ["Cette déclaration est déjà annulée."]})
+    entry = output.movements.filter(movement_type=Movement.Type.PRODUCTION).first()
+    used = output.movements.exclude(pk=entry.pk).exists() or LotLink.objects.filter(parent_lot=output).exists()
+    if used:
+        raise ValidationError({"run": [
+            f"Le lot produit {output.code} a déjà servi (consommé, expédié ou ajusté) : "
+            "annulez d'abord ce qui le suit."
+        ]})
+    lots.reverse_movement(tenant_id=tenant_id, user=user, movement_id=entry.id, reason_code=reason_code,
+                          comment=comment)
+    for production_input in run.inputs.select_related("movement"):
+        lots.reverse_movement(tenant_id=tenant_id, user=user, movement_id=production_input.movement_id,
+                              reason_code=reason_code, comment=comment)
+    old = lots._lot_values(output)
+    output.status, output.block_code = Lot.Status.BLOQUE, lot_reasons.RUN_CANCELLED
+    output.block_reason = lot_reasons.text(lot_reasons.BLOCK_AUTO, lot_reasons.RUN_CANCELLED, "")
+    output.save(update_fields=["status", "block_code", "block_reason", "updated_at"])
+    record_audit(tenant_id=tenant_id, user=user, action="block", entity=output, old_values=old,
+                 new_values=lots._lot_values(output))
+    cancellation = RunCancellation.objects.create(
+        tenant_id=tenant_id, run=run, reason_code=reason_code, comment=comment, user=user,
+    )
+    record_audit(tenant_id=tenant_id, user=user, action="cancel", entity=run, old_values=_run_values(run),
+                 new_values={"reason_code": reason_code,
+                             "reason": lot_reasons.text(reasons.RUN_CANCEL, reason_code, comment)})
+    publish_event(tenant_id=tenant_id, event_type="production.cancelled",
+                  payload={"run_id": str(run.id), "output_lot_id": str(output.id), "reason_code": reason_code})
+    return cancellation
 
 
 # Equipements -------------------------------------------------------------------

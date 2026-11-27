@@ -14,13 +14,19 @@ from production.api.serializers import (
     AvailableLotSerializer,
     BalanceFilterSerializer,
     EquipmentSerializer,
+    RunCancelSerializer,
     RunCreateSerializer,
     RunSerializer,
     StepTotalSerializer,
 )
 from production.models import Equipment, ProductionRun
 from tenants.models import Site
-from tenants.permissions import MaterialBalancePermission, ProductionPermission, ReferentialPermission
+from tenants.permissions import (
+    MaterialBalancePermission,
+    ProductionPermission,
+    ReferentialPermission,
+    RunCancelPermission,
+)
 
 
 def _site(site_id):
@@ -76,7 +82,7 @@ class RunListView(TenantAPIView):
     @extend_schema(responses={200: RunSerializer(many=True)})
     def get(self, request):
         """Dernieres declarations (100)."""
-        found = [selectors.decorate(r) for r in selectors.runs()[:100]]
+        found = selectors.mark_cancellable([selectors.decorate(r) for r in selectors.runs()[:100]])
         return Response(RunSerializer(found, many=True).data)
 
     @extend_schema(request=RunCreateSerializer, responses={201: RunSerializer})
@@ -112,6 +118,21 @@ class RunDetailView(TenantAPIView):
         return Response(RunSerializer(selectors.decorate(selectors.run_or_404(run_id=pk))).data)
 
 
+class RunCancelView(TenantAPIView):
+    """Annuler une declaration (motif code). Le lot produit ne doit avoir servi a rien."""
+
+    permission_classes = [IsAuthenticated, RunCancelPermission]
+
+    @extend_schema(request=RunCancelSerializer, responses={200: RunSerializer})
+    def post(self, request, pk):
+        run = selectors.run_or_404(run_id=pk)
+        serializer = RunCancelSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        services.cancel_run(tenant_id=request.user.tenant_id, user=request.user, run_id=run.id,
+                            **serializer.validated_data)
+        return Response(RunSerializer(selectors.decorate(selectors.run_or_404(run_id=pk))).data)
+
+
 class ProductionOptionsView(TenantAPIView):
     """Listes de l'ecran « Déclarer une étape » : etapes, equipements, lots disponibles, articles produits."""
 
@@ -137,6 +158,7 @@ class ProductionOptionsView(TenantAPIView):
             ],
             "waste_reasons": lot_reasons.as_options(reasons.WASTE),
             "late_reasons": lot_reasons.as_options(lot_reasons.LATE_ENTRY),
+            "cancel_reasons": lot_reasons.as_options(reasons.RUN_CANCEL),
         })
 
 

@@ -47,6 +47,7 @@ class ReceptionArticleSerializer(serializers.Serializer):
     article_type = serializers.CharField()
     base_unit = serializers.CharField()
     storage = serializers.CharField()
+    shelf_life_days = serializers.IntegerField(allow_null=True)
     conversions = ConversionOptionSerializer(many=True, source="conversions.all")
 
 
@@ -281,3 +282,46 @@ class RecallShipmentSerializer(serializers.Serializer):
             "export_document_ref": shipment.export_document_ref if shipment else "",
             "bill_of_lading": shipment.bill_of_lading if shipment else "",
         }
+
+
+class TransferCreateSerializer(serializers.Serializer):
+    lot = serializers.UUIDField()
+    to_site = serializers.UUIDField()
+    quantity = serializers.DecimalField(max_digits=15, decimal_places=3, required=False, allow_null=True,
+                                        help_text="Vide : tout le stock du lot (il garde son code).")
+    unit = serializers.CharField(max_length=30, required=False, allow_blank=True, default="")
+    occurred_at = serializers.DateTimeField(required=False, allow_null=True,
+                                            help_text="Vide : l'heure du serveur (saisie au moment du geste).")
+    late_reason_code = serializers.ChoiceField(choices=list(reasons.LATE_ENTRY), required=False, allow_blank=True,
+                                               default="")
+    late_comment = serializers.CharField(required=False, allow_blank=True, default="")
+
+
+class TransferSerializer(serializers.Serializer):
+    id = serializers.UUIDField()
+    source_lot_id = serializers.UUIDField()
+    source_lot_code = serializers.CharField(source="source_lot.code")
+    lot_id = serializers.UUIDField()
+    lot_code = serializers.CharField(source="lot.code")
+    whole_lot = serializers.SerializerMethodField()
+    article_code = serializers.CharField(source="lot.article.code")
+    article_name = serializers.CharField(source="lot.article.name")
+    base_unit = serializers.CharField(source="lot.article.base_unit")
+    organic_status = serializers.CharField(source="lot.organic_status")
+    from_site_name = serializers.CharField(source="from_site.name", default=None)
+    to_site_name = serializers.CharField(source="to_site.name")
+    quantity = serializers.DecimalField(max_digits=18, decimal_places=3)
+    occurred_at = serializers.DateTimeField()
+    created_at = serializers.DateTimeField()
+    late = serializers.SerializerMethodField()
+    late_reason_label = serializers.SerializerMethodField()
+    username = serializers.CharField(source="user.username", default=None)
+
+    def get_whole_lot(self, t):
+        return t.lot_id == t.source_lot_id
+
+    def get_late(self, t):
+        return bool(t.late_reason_code) or services.is_late(occurred_at=t.occurred_at, created_at=t.created_at)
+
+    def get_late_reason_label(self, t):
+        return reasons.text(reasons.LATE_ENTRY, t.late_reason_code, t.late_comment) if t.late_reason_code else ""

@@ -72,6 +72,11 @@ export default function Home() {
               <a href="/production">Production : déclarer une étape (mûrissement, séchage, cartons, palette)</a>
             </p>
           )}
+          {["admin", "production", "operateur"].includes(me.role) && (
+            <p>
+              <a href="/transferts">Transferts : envoyer un lot vers une autre usine</a>
+            </p>
+          )}
           {["admin", "qualite"].includes(me.role) && (
             <p>
               <a href="/qualite">Contrôle qualité d&apos;un lot</a>
