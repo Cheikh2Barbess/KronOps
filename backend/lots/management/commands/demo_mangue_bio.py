@@ -53,6 +53,30 @@ PRODUCERS = {
     "NIO-05": ("Silué Brahima (producteur démo)", "Niofoin", "1.9", "bio"),
     "BON-21": ("Kouamé Ahou (productrice démo)", "Bonoua", "6.0", "bio"),
     "ADI-02": ("Aka Jean-Marc (producteur démo)", "Adiaké", "3.5", "conversion"),
+    "JAC-04": ("N'Guessan Koffi (producteur démo)", "Jacqueville", "5.0", "bio"),
+}
+# Etapes de l'entreprise, dans l'ordre du procede fruits seches (mangue, ananas, coco). « Préparation » reste
+# desactivee : l'entreprise declare lavage, epluchage et decoupe separement.
+STEP_ORDER = [
+    "murissement", "lavage", "tri", "epluchage_decoupe", "pretraitement", "cassage", "parage", "rapage",
+    "pasteurisation", "sechage", "refroidissement", "tri_finition", "conditionnement", "palettisation",
+]
+# Parcours par produit : nom -> (etapes, articles)
+ROUTES = {
+    "Mangue séchée": (
+        ["murissement", "lavage", "tri", "epluchage_decoupe", "pretraitement", "sechage", "tri_finition",
+         "conditionnement", "palettisation"],
+        ["mangue", "mure", "sechee", "carton", "palette"],
+    ),
+    "Ananas séché": (
+        ["lavage", "epluchage_decoupe", "sechage", "tri_finition", "conditionnement", "palettisation"],
+        ["ananas", "ananas_epluche", "ananas_seche", "ananas_carton"],
+    ),
+    "Coco râpée séchée": (
+        ["cassage", "parage", "lavage", "rapage", "pasteurisation", "sechage", "refroidissement",
+         "conditionnement", "palettisation"],
+        ["coco", "coco_amande", "coco_paree", "coco_rapee", "coco_sechee", "coco_carton"],
+    ),
 }
 # Historique de la saison passee : saisi apres coup, avec son motif.
 LATE = {"late_reason_code": "ressaisie_papier"}
@@ -173,7 +197,19 @@ class Demo:
                 shelf_life_days=365)
         article("palette", "MGAP", "Mangue séchée, palette de cartons", "fini", shelf_life_days=365)
         article("ananas", "ANAF", "Ananas Pain de sucre frais", "matiere", conversion=("caisse", "15"))
+        # Ananas et coco : pas de fourchette de rendement (aucune valeur publique verifiee, a fournir par le pilote).
+        # Les quantites de l'historique ananas et coco sont FICTIVES.
+        article("ananas_epluche", "ANAP", "Ananas épluché tranché", "semi_fini", shelf_life_days=2)
         article("ananas_seche", "ANAS", "Ananas séché en vrac", "semi_fini", shelf_life_days=365)
+        article("ananas_carton", "ANAC", "Ananas séché, carton vrac 10 kg", "fini", conversion=("carton", "10"),
+                shelf_life_days=365)
+        article("coco", "COCF", "Noix de coco décortiquée", "matiere", conversion=("sac", "50"))
+        article("coco_amande", "COCA", "Amande de coco écalée", "semi_fini", shelf_life_days=2)
+        article("coco_paree", "COCB", "Amande de coco parée", "semi_fini", shelf_life_days=2)
+        article("coco_rapee", "COCR", "Coco râpée humide", "semi_fini", shelf_life_days=1)
+        article("coco_sechee", "COCS", "Coco râpée séchée en vrac", "semi_fini", shelf_life_days=365)
+        article("coco_carton", "COCK", "Coco râpée séchée, carton 10 kg", "fini", conversion=("carton", "10"),
+                shelf_life_days=365)
         article("carton_vide", "CTV10", "Carton kraft vide 10 kg avec sac intérieur", "emballage", unit="unite",
                 conversion=("paquet", "50"))
 
@@ -199,7 +235,17 @@ class Demo:
             tenant_id=t, user=u, name="Grossiste bio Lyon (démo)", is_customer=True, city="Lyon",
             address="Marché d'intérêt national, Corbas, France",
         )
+        p["hambourg"] = catalog.create_partner(
+            tenant_id=t, user=u, name="Biscuiterie bio Hambourg (démo)", is_customer=True, city="Hambourg",
+            address="Port de Hambourg, Allemagne",
+        )
         return a, p
+
+    def _steps_and_routes(self, a):
+        t, u = self.t, self.admin
+        production.configure_steps(tenant_id=t, user=u, steps=[{"code": c, "is_active": True} for c in STEP_ORDER])
+        for name, (steps, articles) in ROUTES.items():
+            production.create_route(tenant_id=t, user=u, name=name, steps=steps, articles=[a[k] for k in articles])
 
     def _sites(self):
         t, u = self.t, self.admin
@@ -213,6 +259,13 @@ class Demo:
             ("SEC-N3", "Séchoir Nord 3", "sechoir", nord),
             ("CDT-N1", "Ligne de conditionnement Nord", "conditionnement", nord),
             ("SEC-S1", "Séchoir Sud 1", "sechoir", sud),
+            ("PRE-S1", "Table d'épluchage Sud", "preparation", sud),
+            ("CAS-S1", "Poste de cassage coco Sud", "preparation", sud),
+            ("RAP-S1", "Râpeuse coco Sud", "preparation", sud),
+            ("PAS-S1", "Pasteurisateur Sud", "autre", sud),
+            ("SEC-S2", "Séchoir Sud 2 (coco)", "sechoir", sud),
+            ("REF-S1", "Table de refroidissement Sud", "autre", sud),
+            ("CDT-S1", "Ligne de conditionnement Sud", "conditionnement", sud),
         ]:
             e[code] = production.create_equipment(tenant_id=t, user=u, code=code, name=name, equipment_type=kind,
                                                   site=site)
@@ -220,11 +273,11 @@ class Demo:
 
     # Historique --------------------------------------------------------------
 
-    def _receive(self, article, parcel, caisses, day, site, visual_ok=True, reason_code=""):
+    def _receive(self, article, parcel, caisses, day, site, visual_ok=True, reason_code="", unit="caisse"):
         parcel = self.parcels[parcel]
         return services.receive_lot(
             tenant_id=self.t, user=self.users[User.Role.OPERATEUR], article=article, supplier=parcel.producer,
-            supplier_lot_code="", parcel=parcel, quantity=Decimal(caisses), unit="caisse", date_type="ddm",
+            supplier_lot_code="", parcel=parcel, quantity=Decimal(caisses), unit=unit, date_type="ddm",
             # Fruit frais : date courte, simple repere de fraicheur.
             expiry_date=day + datetime.timedelta(days=10), visual_ok=visual_ok, reason_code=reason_code,
             occurred_at=_at(day, 8), site=site, **LATE,
@@ -236,18 +289,21 @@ class Demo:
             tenant_id=self.t, user=user or self.users[User.Role.PRODUCTION], step=step, equipment=equipment,
             inputs=[(lot, Decimal(q)) for lot, q in inputs], output_article=article, output_quantity=Decimal(quantity),
             output_unit=unit, started_at=start, ended_at=end,
-            waste_quantity=Decimal(waste[0]) if waste else None, waste_code=waste[1] if waste else "", **LATE,
+            waste_quantity=Decimal(waste[0]) if waste else None, waste_code=waste[1] if waste else "",
+            waste_comment=waste[2] if waste and len(waste) > 2 else "", **LATE,
         ).output_lot
 
-    def _qc(self, lot, day, hour, moisture):
+    def _qc(self, lot, day, hour, moisture, failed=(), comment=""):
         return services.record_quality_check(
             tenant_id=self.t, user=self.users[User.Role.QUALITE], lot_id=lot.id, moisture_pct=Decimal(moisture),
-            checks={code: "ok" for code in QUALITY_CRITERIA}, checked_at=_at(day, hour), **LATE,
+            checks={code: "nok" if code in failed else "ok" for code in QUALITY_CRITERIA}, comment=comment,
+            checked_at=_at(day, hour), **LATE,
         )
 
     def build(self):
         self._accounts()
         a, p = self._catalog()
+        self._steps_and_routes(a)
         sites, e = self._sites()
         nord, sud = sites["nord"], sites["sud"]
         q, prod = self.users[User.Role.QUALITE], self.users[User.Role.PRODUCTION]
@@ -313,14 +369,16 @@ class Demo:
             export_document_ref="COI.CI.2026.DEMO-0002", site=nord, **LATE,
         )
 
-        # Saison ananas (en cours), usine Sud. Lot bio en partie seche, le reste attend en stock. Le lot seche
+        # Saison ananas (en cours), usine Sud. Lot bio epluche puis seche, le reste attend en stock. Le lot seche
         # attend l'analyse de residus : debloque en direct. Un lot « en conversion » sert a montrer le refus
         # de melange.
         today = timezone.localdate()
         day_in = today - datetime.timedelta(days=3)
         r6 = self._receive(a["ananas"], "BON-21", "200", day_in, sud)
         conv = self._receive(a["ananas"], "ADI-02", "40", day_in, sud)
-        dry = self._run("sechage", e["SEC-S1"], [(r6, "2400")], a["ananas_seche"], "160",
+        peeled = self._run("epluchage_decoupe", e["PRE-S1"], [(r6, "2400")], a["ananas_epluche"], "1320",
+                           _at(day_in, 10), _at(day_in, 13), waste=("1080", "peaux_noyaux"))
+        dry = self._run("sechage", e["SEC-S1"], [(peeled, "1320")], a["ananas_seche"], "200",
                         _at(day_in, 14), _at(day_in + datetime.timedelta(days=1), 6))
         # Cartons vides envoyes de l'usine Nord vers l'usine Sud pour l'ananas : transfert d'une partie du lot.
         services.transfer_lot(tenant_id=self.t, user=prod, lot_id=cartons_vides.id, to_site=sud,
@@ -328,11 +386,46 @@ class Demo:
         services.block_lot(tenant_id=self.t, user=q, lot_id=dry.id, reason_code="autre",
                            comment="En attente du résultat d'analyse de résidus de pesticides")
 
+        # Coco rapee sechee, octobre 2026, usine Sud : toutes les etapes propres a la coco. Quantites fictives.
+        oct_ = d(2026, 10, 6)
+        coco = self._receive(a["coco"], "JAC-04", "60", oct_, sud, unit="sac")
+        cartons_sud = services.receive_lot(
+            tenant_id=self.t, user=self.users[User.Role.OPERATEUR], article=a["carton_vide"],
+            supplier=p["emballages"], supplier_lot_code="EL-2610-031", quantity=Decimal("2"), unit="paquet",
+            occurred_at=_at(oct_, 10), site=sud, **LATE,
+        )
+        amande = self._run("cassage", e["CAS-S1"], [(coco, "3000")], a["coco_amande"], "1350",
+                           _at(oct_, 9), _at(oct_, 12), waste=("1650", "autre", "Coques et eau de coco"))
+        paree = self._run("parage", e["CAS-S1"], [(amande, "1350")], a["coco_paree"], "1150",
+                          _at(oct_, 12), _at(oct_, 15), waste=("200", "autre", "Pellicule brune retirée au parage"))
+        rapee = self._run("rapage", e["RAP-S1"], [(paree, "1150")], a["coco_rapee"], "1140",
+                          _at(oct_, 15), _at(oct_, 16), waste=("10", "chutes"))
+        pasteur = self._run("pasteurisation", e["PAS-S1"], [(rapee, "1140")], a["coco_rapee"], "1135",
+                            _at(oct_, 16), _at(oct_, 17), waste=("5", "chutes"))
+        seche = self._run("sechage", e["SEC-S2"], [(pasteur, "1135")], a["coco_sechee"], "585",
+                          _at(oct_, 17), _at(d(2026, 10, 7), 5))
+        froid = self._run("refroidissement", e["REF-S1"], [(seche, "585")], a["coco_sechee"], "582",
+                          _at(d(2026, 10, 7), 6), _at(d(2026, 10, 7), 8), waste=("3", "chutes"))
+        k1 = self._run("conditionnement", e["CDT-S1"], [(froid, "300"), (cartons_sud, "30")], a["coco_carton"],
+                       "30", _at(d(2026, 10, 7), 9), _at(d(2026, 10, 7), 11), unit="carton")
+        k2 = self._run("conditionnement", e["CDT-S1"], [(froid, "282"), (cartons_sud, "28")], a["coco_carton"],
+                       "28", _at(d(2026, 10, 7), 13), _at(d(2026, 10, 7), 15), unit="carton", waste=("2", "chutes"))
+        self._qc(k1, d(2026, 10, 7), 12, "3.0")
+        # Second lot trop humide : controle non conforme, le lot est bloque automatiquement.
+        self._qc(k2, d(2026, 10, 7), 16, "6.5", failed=("humidite",))
+        shipping.create_shipment(
+            tenant_id=self.t, user=prod, customer=p["hambourg"], lines=[(k1, Decimal("30"), "carton")],
+            shipped_at=_at(d(2026, 10, 20), 7), container_number="TRCU2609002", seal_number="SCELLE-DEMO-0003",
+            export_document_ref="COI.CI.2026.DEMO-0003", bill_of_lading="BL-DEMO-0003", site=sud, **LATE,
+        )
+
         assert ApprovalRequest.objects.filter(status=ApprovalRequest.Status.APPROVED).count() == 1
         return [
             f"Rappel depuis un carton (séchoir 2, écart de rendement) : cherche {c2.code}",
             "Rappel depuis un conteneur : cherche TRCU2606003",
-            f"Mélange refusé en direct : sèche ensemble {r6.code} (bio) et {conv.code} (en conversion)",
+            f"Mélange refusé en direct : épluche ensemble {r6.code} (bio) et {conv.code} (en conversion)",
             f"Lot bloqué à débloquer en direct : {dry.code}",
+            "Coco râpée, rappel depuis un conteneur : cherche TRCU2609002",
+            f"Contrôle qualité non conforme (humidité), lot bloqué : {k2.code}",
             f"Lot détruit après double validation : {bad.code}",
         ]

@@ -169,7 +169,9 @@ Rien n'est effacé : le journal et les mouvements sont en insertion seule, même
 
 Ce que la démo montre en plus :
 
-- **Statut bio par lot** (bio, conversion, conventionnel), repris de la parcelle à la réception. Écran Production : un mélange bio et non bio est refusé (essaie le lot d'ananas du producteur ADI-02, en conversion).
+- **Trois produits** : mangue, ananas et coco râpée séchés. Les étapes sont réglées dans l'ordre du procédé (la « Préparation » groupée est décochée), et chaque produit a son parcours (Référentiels). Le râpage est refusé sur de la mangue.
+- **Coco râpée** (octobre 2026, usine Sud) : cassage, parage, râpage, pasteurisation, séchage, refroidissement, cartons. Un lot expédié à Hambourg (cherche `TRCU2609002` dans le rappel), un lot trop humide bloqué par un contrôle non conforme. Les quantités de l'ananas et de la coco sont fictives, sans fourchette de rendement.
+- **Statut bio par lot** (bio, conversion, conventionnel), repris de la parcelle à la réception. Écran Production, étape Épluchage et découpe : un mélange bio et non bio est refusé (essaie le lot d'ananas du producteur ADI-02, en conversion).
 - **Bilan matière** (http://localhost:3000/bilan) : consommé, produit, déchets, eau évaporée et rendement par étape, écarts en rouge, saisies tardives signalées.
 - **Rappel depuis un carton ou un conteneur** (http://localhost:3000/rappel) : cherche le code carton affiché à la fin de la commande, ou `TRCU2606003`. Le rapport remonte aux parcelles et descend jusqu'aux clients et conteneurs, imprimable en PDF.
 - **Saisie au moment du geste** : l'heure est celle du serveur. Une saisie de plus de 2 heures après coup exige un motif choisi dans une liste et reste signalée partout.
