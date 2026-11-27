@@ -8,6 +8,7 @@ Tables en INSERTION SEULE : une erreur se corrige par un contre-mouvement, jamai
 from django.conf import settings
 from django.db import models
 from django.db.models import Q
+from django.db.models.functions import Lower
 
 from core.models import TenantModel
 
@@ -144,3 +145,45 @@ class StepSetting(TenantModel):
 
     def __str__(self):
         return self.step
+
+
+class ProductRoute(TenantModel):
+    """Parcours d'un produit : les etapes permises pour ses articles (la mangue et la coco n'ont pas les memes).
+
+    Un article sans parcours, ou dans un parcours desactive, suit les etapes actives de l'entreprise.
+    On ne supprime pas un parcours : on le desactive.
+    """
+
+    name = models.CharField("nom", max_length=100)
+    is_active = models.BooleanField("actif", default=True)
+
+    class Meta:
+        verbose_name = "parcours de produit"
+        constraints = [
+            models.UniqueConstraint("tenant", Lower("name"), name="productroute_unique_name_per_tenant"),
+        ]
+
+    def __str__(self):
+        return self.name
+
+
+class RouteStep(TenantModel):
+    """Etape permise dans un parcours. L'ordre affiche est celui choisi pour l'entreprise (StepSetting)."""
+
+    route = models.ForeignKey(ProductRoute, on_delete=models.CASCADE, related_name="steps")
+    step = models.CharField("étape", max_length=20, choices=ProductionRun.Step.choices)
+
+    class Meta:
+        verbose_name = "étape d'un parcours"
+        constraints = [models.UniqueConstraint(fields=["route", "step"], name="routestep_unique_step_per_route")]
+
+
+class RouteArticle(TenantModel):
+    """Article rattache a un parcours. Un article appartient a un seul parcours."""
+
+    route = models.ForeignKey(ProductRoute, on_delete=models.CASCADE, related_name="articles")
+    article = models.ForeignKey("catalog.Article", on_delete=models.PROTECT, related_name="+")
+
+    class Meta:
+        verbose_name = "article d'un parcours"
+        constraints = [models.UniqueConstraint(fields=["tenant", "article"], name="routearticle_unique_article")]

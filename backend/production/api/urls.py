@@ -10,5 +10,7 @@ urlpatterns = [
     path("production/runs/<uuid:pk>/", views.RunDetailView.as_view(), name="run-detail"),
     path("production/runs/<uuid:pk>/cancel/", views.RunCancelView.as_view(), name="run-cancel"),
     path("production/steps/", views.StepSettingsView.as_view(), name="step-settings"),
+    path("production/routes/", views.RouteListView.as_view(), name="route-list"),
+    path("production/routes/<uuid:pk>/", views.RouteDetailView.as_view(), name="route-detail"),
     path("production/balance/", views.MaterialBalanceView.as_view(), name="material-balance"),
 ]

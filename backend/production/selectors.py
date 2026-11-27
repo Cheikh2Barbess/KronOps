@@ -9,7 +9,16 @@ from django.http import Http404
 from lots import selectors as lot_selectors
 from lots import services as lot_services
 from lots.models import Lot, LotLink, Movement
-from production.models import DEFAULT_ACTIVE_STEPS, Equipment, ProductionInput, ProductionRun, StepSetting
+from production.models import (
+    DEFAULT_ACTIVE_STEPS,
+    Equipment,
+    ProductionInput,
+    ProductionRun,
+    ProductRoute,
+    RouteArticle,
+    RouteStep,
+    StepSetting,
+)
 from production.services import yield_status
 
 PCT = Decimal("0.01")
@@ -36,6 +45,54 @@ def step_catalog():
 def active_steps():
     """Etapes proposees a la declaration, dans l'ordre choisi par l'entreprise."""
     return [r for r in step_catalog() if r["is_active"]]
+
+
+def step_order():
+    """Code d'etape vers sa place dans la liste de l'entreprise (actives d'abord)."""
+    return {r["code"]: i for i, r in enumerate(step_catalog())}
+
+
+def routes():
+    """Parcours de l'entreprise, avec leurs etapes (dans l'ordre de l'entreprise) et leurs articles."""
+    order = step_order()
+    labels = dict(ProductionRun.Step.choices)
+    found = list(
+        ProductRoute.objects.prefetch_related(
+            Prefetch("steps", queryset=RouteStep.objects.all()),
+            Prefetch("articles", queryset=RouteArticle.objects.select_related("article").order_by("article__code")),
+        ).order_by("name")
+    )
+    for route in found:
+        codes = sorted((s.step for s in route.steps.all()), key=lambda c: order.get(c, len(order)))
+        route.step_rows = [{"code": c, "label": labels.get(c, c)} for c in codes]
+        route.article_rows = [{"id": ra.article_id, "code": ra.article.code, "name": ra.article.name}
+                              for ra in route.articles.all()]
+    return found
+
+
+def route_or_404(*, route_id):
+    route = next((r for r in routes() if r.id == route_id), None)
+    if route is None:
+        raise Http404
+    return route
+
+
+def route_steps_by_article():
+    """Article (id) vers les etapes permises par son parcours actif, dans l'ordre de l'entreprise.
+
+    Un article absent du resultat n'a pas de parcours actif : il suit les etapes de l'entreprise.
+    """
+    order = step_order()
+    steps = {}
+    for step in RouteStep.objects.filter(route__is_active=True).values_list("route_id", "step"):
+        steps.setdefault(step[0], []).append(step[1])
+    result = {}
+    for route_id, article_id, name in RouteArticle.objects.filter(route__is_active=True).values_list(
+        "route_id", "article_id", "route__name"
+    ):
+        codes = sorted(steps.get(route_id, []), key=lambda c: order.get(c, len(order)))
+        result[article_id] = {"route": name, "steps": codes}
+    return result
 
 
 def equipment_list(*, active=None, site_id=None):

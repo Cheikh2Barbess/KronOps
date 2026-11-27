@@ -19,7 +19,16 @@ from lots import reasons as lot_reasons
 from lots import services as lots
 from lots.models import Lot, LotLink, Movement
 from production import reasons
-from production.models import Equipment, ProductionInput, ProductionRun, RunCancellation, StepSetting
+from production.models import (
+    Equipment,
+    ProductionInput,
+    ProductionRun,
+    ProductRoute,
+    RouteArticle,
+    RouteStep,
+    RunCancellation,
+    StepSetting,
+)
 
 ORGANIC_LABEL = dict(OrganicStatus.choices)
 
@@ -62,6 +71,34 @@ def _active_steps():
     return active_steps()
 
 
+def _route_steps_by_article():
+    from production.selectors import route_steps_by_article
+
+    return route_steps_by_article()
+
+
+def _route_errors(step, inputs, output_article):
+    """Etape hors du parcours du produit obtenu ou d'un lot consomme (emballages exclus)."""
+    routes = _route_steps_by_article()
+    if not routes or step not in ProductionRun.Step.values:
+        return {}
+    label = ProductionRun.Step(step).label
+    errors = {}
+    route = routes.get(output_article.id)
+    if route and step not in route["steps"]:
+        errors["step"] = [f"L'étape « {label} » ne fait pas partie du parcours « {route['route']} » "
+                          f"du produit {output_article.code}."]
+    for lot, _ in inputs:
+        if lot.article.article_type == Article.Type.EMBALLAGE:
+            continue
+        route = routes.get(lot.article_id)
+        if route and step not in route["steps"]:
+            errors["inputs"] = [f"Le lot {lot.code} ({lot.article.code}) suit le parcours « {route['route']} », "
+                                f"qui ne prévoit pas l'étape « {label} »."]
+            break
+    return errors
+
+
 def _run_values(run):
     return {
         "step": run.step, "equipment_id": str(run.equipment_id) if run.equipment_id else None,
@@ -96,6 +133,8 @@ def declare_run(*, tenant_id, user, step, inputs, output_article, output_quantit
     lot_ids = [lot.id for lot, _ in inputs]
     if len(set(lot_ids)) != len(lot_ids):
         errors["inputs"] = ["Un même lot apparaît deux fois : regroupez les quantités."]
+    if not errors:
+        errors = _route_errors(step, inputs, output_article)
     if errors:
         raise ValidationError(errors)
 
@@ -317,3 +356,85 @@ def configure_steps(*, tenant_id, user, steps):
     if changed:
         publish_event(tenant_id=tenant_id, event_type="production.steps_configured",
                       payload={"active": [c for c, (a, _) in sorted(wanted.items(), key=lambda x: x[1][1]) if a]})
+
+
+def _clean_route(*, route_id, name, steps, articles):
+    """Valide un parcours. `articles` = articles deja trouves (la RLS cache ceux d'un autre client)."""
+    errors = {}
+    name = (name or "").strip()
+    if not name:
+        errors["name"] = ["Donnez un nom au parcours."]
+    elif ProductRoute.objects.filter(name__iexact=name).exclude(pk=route_id).exists():
+        errors["name"] = ["Un parcours porte déjà ce nom."]
+    active = {s["code"] for s in _active_steps()}
+    if not steps:
+        errors["steps"] = ["Choisissez au moins une étape."]
+    elif any(c not in ProductionRun.Step.values for c in steps):
+        errors["steps"] = ["Étape inconnue."]
+    elif len(set(steps)) != len(steps):
+        errors["steps"] = ["Une même étape apparaît deux fois."]
+    elif any(c not in active for c in steps):
+        off = [ProductionRun.Step(c).label for c in steps if c not in active]
+        errors["steps"] = [f"Activez d'abord ces étapes pour l'entreprise : {', '.join(off)}."]
+    if not articles:
+        errors["articles"] = ["Rattachez au moins un article."]
+    elif any(a.article_type == Article.Type.EMBALLAGE for a in articles):
+        errors["articles"] = ["Un emballage ne suit pas de parcours."]
+    else:
+        taken = (RouteArticle.objects.filter(article__in=articles).exclude(route_id=route_id)
+                 .select_related("article", "route").order_by("article__code").first())
+        if taken is not None:
+            errors["articles"] = [f"L'article {taken.article.code} est déjà dans le parcours « {taken.route.name} »."]
+    if errors:
+        raise ValidationError(errors)
+    return name
+
+
+def _route_values(route):
+    return {
+        "name": route.name, "is_active": route.is_active,
+        "steps": sorted(route.steps.values_list("step", flat=True)),
+        "articles": sorted(str(a) for a in route.articles.values_list("article_id", flat=True)),
+    }
+
+
+def _set_route_members(*, tenant_id, route, steps, articles):
+    RouteStep.objects.filter(route=route).exclude(step__in=steps).delete()
+    have = set(RouteStep.objects.filter(route=route).values_list("step", flat=True))
+    RouteStep.objects.bulk_create([RouteStep(tenant_id=tenant_id, route=route, step=c) for c in steps if c not in have])
+    ids = [a.id for a in articles]
+    RouteArticle.objects.filter(route=route).exclude(article_id__in=ids).delete()
+    have = set(RouteArticle.objects.filter(route=route).values_list("article_id", flat=True))
+    RouteArticle.objects.bulk_create(
+        [RouteArticle(tenant_id=tenant_id, route=route, article=a) for a in articles if a.id not in have]
+    )
+
+
+@transaction.atomic
+def create_route(*, tenant_id, user, name, steps, articles, is_active=True):
+    """Cree le parcours d'un produit : les etapes permises pour ses articles."""
+    name = _clean_route(route_id=None, name=name, steps=steps, articles=articles)
+    route = ProductRoute.objects.create(tenant_id=tenant_id, name=name, is_active=is_active)
+    _set_route_members(tenant_id=tenant_id, route=route, steps=steps, articles=articles)
+    new = _route_values(route)
+    record_audit(tenant_id=tenant_id, user=user, action="create", entity=route, new_values=new)
+    publish_event(tenant_id=tenant_id, event_type="production.route_created",
+                  payload={"route_id": str(route.id), "steps": new["steps"]})
+    return route
+
+
+@transaction.atomic
+def update_route(*, tenant_id, user, route, name, steps, articles, is_active):
+    """Remplace le nom, l'etat, les etapes et les articles d'un parcours. Les declarations faites ne changent pas."""
+    route = ProductRoute.objects.select_for_update().get(pk=route.pk)
+    name = _clean_route(route_id=route.id, name=name, steps=steps, articles=articles)
+    old = _route_values(route)
+    route.name, route.is_active = name, is_active
+    route.save(update_fields=["name", "is_active", "updated_at"])
+    _set_route_members(tenant_id=tenant_id, route=route, steps=steps, articles=articles)
+    new = _route_values(route)
+    if new != old:
+        record_audit(tenant_id=tenant_id, user=user, action="update", entity=route, old_values=old, new_values=new)
+        publish_event(tenant_id=tenant_id, event_type="production.route_updated",
+                      payload={"route_id": str(route.id), "steps": new["steps"], "is_active": is_active})
+    return route

@@ -165,3 +165,23 @@ class StepConfigureSerializer(serializers.Serializer):
     """Liste ordonnee des etapes voulues. Les etapes non citees sont desactivees."""
 
     steps = StepChoiceSerializer(many=True, allow_empty=True)
+
+
+class RouteSerializer(serializers.Serializer):
+    id = serializers.UUIDField(read_only=True)
+    name = serializers.CharField(read_only=True)
+    is_active = serializers.BooleanField(read_only=True)
+    steps = serializers.ListField(source="step_rows", child=serializers.DictField(), read_only=True)
+    articles = serializers.SerializerMethodField()
+
+    def get_articles(self, route):
+        return [{"id": str(a["id"]), "code": a["code"], "name": a["name"]} for a in route.article_rows]
+
+
+class RouteWriteSerializer(serializers.Serializer):
+    """Parcours complet : nom, etat, etapes permises (codes) et articles rattaches (identifiants)."""
+
+    name = serializers.CharField(max_length=100, allow_blank=True, trim_whitespace=True)
+    is_active = serializers.BooleanField(default=True)
+    steps = serializers.ListField(child=serializers.CharField(max_length=20), allow_empty=True)
+    articles = serializers.ListField(child=serializers.UUIDField(), allow_empty=True)
