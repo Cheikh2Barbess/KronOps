@@ -27,8 +27,8 @@ from core.tenancy import tenant_context
 from lots import services
 from lots.models import ApprovalRequest
 from tenants import services as tenants
-from tenants.models import User
-from tenants.selectors import username_taken
+from tenants.models import Tenant, User
+from tenants.selectors import find_user_by_username, username_taken
 
 TENANT_NAME = "Vergers Bio du Nord (démo)"
 # (identifiant, role, prenom, nom, poste)
@@ -60,13 +60,19 @@ class Command(BaseCommand):
         parser.add_argument(
             "--password", help="Mot de passe commun aux 4 comptes de demo. Sinon demande au clavier."
         )
+        parser.add_argument(
+            "--reset", action="store_true",
+            help="Archive l'entreprise de demo existante (rien n'est efface) et en recree une neuve.",
+        )
 
-    def handle(self, *args, password=None, **options):
+    def handle(self, *args, password=None, reset=False, **options):
         ensure_database_migrated()
+        old_demo = self._existing_demo() if reset else None
         taken = [u for u, *_ in ACCOUNTS if username_taken(u)]
-        if taken:
+        if taken and old_demo is None:
             raise CommandError(
-                "La démonstration est déjà chargée (identifiant " + taken[0] + " pris). Rien n'a été modifié."
+                "La démonstration est déjà chargée (identifiant " + taken[0] + " pris). Rien n'a été modifié. "
+                "Pour repartir à neuf : ajoute --reset."
             )
         if not password:
             password = getpass.getpass("Mot de passe des comptes de démonstration (10 caractères minimum) : ")
@@ -79,6 +85,9 @@ class Command(BaseCommand):
 
         # Tout ou rien : une erreur au milieu n'en laisse aucune trace.
         with transaction.atomic():
+            if old_demo is not None:
+                tenants.archive_tenant(tenant_id=old_demo.id)
+                self.stdout.write(f"Ancienne démonstration archivée : « {old_demo.name} ».")
             tenant, admin = tenants.create_tenant_with_admin(
                 tenant_name=TENANT_NAME, username=ACCOUNTS[0][0], password=password
             )
@@ -89,6 +98,24 @@ class Command(BaseCommand):
         self.stdout.write("Comptes (même mot de passe) : " + ", ".join(u for u, *_ in ACCOUNTS))
         for line in summary:
             self.stdout.write(line)
+
+    def _existing_demo(self):
+        """L'entreprise de demo a remettre a zero. Garde-fou : jamais une entreprise cliente.
+
+        Elle doit porter le nom de la demo ET posseder les 4 comptes demo.*, et rien d'autre ne doit les porter.
+        """
+        users = [find_user_by_username(u) for u, *_ in ACCOUNTS]
+        found = [u for u in users if u is not None]
+        if not found:
+            return None
+        tenant_ids = {u.tenant_id for u in found}
+        tenant = Tenant.objects.filter(pk__in=tenant_ids - {None}).first() if len(tenant_ids) == 1 else None
+        if tenant is None or tenant.name != TENANT_NAME:
+            raise CommandError(
+                "Les comptes demo.* n'appartiennent pas tous à l'entreprise « " + TENANT_NAME + " ». "
+                "Remise à zéro refusée, rien n'a été modifié."
+            )
+        return tenant
 
 
 class Demo:

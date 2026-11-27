@@ -1,6 +1,7 @@
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import transaction
+from django.utils import timezone
 from rest_framework.exceptions import PermissionDenied, ValidationError
 
 from audit.services import record_audit
@@ -143,3 +144,31 @@ def update_user(*, tenant_id, user, target, password=None, **changes):
         publish_event(tenant_id=tenant_id, event_type="user.updated",
                       payload={"user_id": str(target.id), "fields": sorted(after)})
     return target
+
+
+@transaction.atomic
+def archive_tenant(*, tenant_id):
+    """Met une entreprise hors service sans rien effacer (journal et mouvements en insertion seule).
+
+    L'entreprise est renommee et desactivee. Ses comptes sont desactives (plus de connexion possible,
+    sessions ouvertes comprises) et leurs identifiants recoivent un suffixe d'archive, pour liberer
+    les identifiants. Chaque compte modifie est trace au journal de l'entreprise archivee.
+    Reserve aux commandes de la plateforme (aujourd'hui : remise a zero de la demo).
+    """
+    tenant = Tenant.objects.select_for_update().get(pk=tenant_id)
+    stamp = timezone.localtime().strftime("%Y%m%d%H%M%S")
+    old_name = tenant.name
+    tenant.name = f"{old_name} [archivée {timezone.localtime():%d/%m/%Y %H:%M}]"[:200]
+    tenant.is_active = False
+    tenant.save(update_fields=["name", "is_active"])
+    with tenant_context(tenant.id):
+        for account in User.objects.filter(tenant_id=tenant.id).order_by("username"):
+            old = _user_values(account)
+            account.username = f"{account.username}.archive{stamp}"
+            account.is_active = False
+            account.save(update_fields=["username", "is_active"])
+            record_audit(tenant_id=tenant.id, user=None, action="update", entity=account, old_values=old,
+                         new_values=_user_values(account))
+        publish_event(tenant_id=tenant.id, event_type="tenant.archived",
+                      payload={"tenant_id": str(tenant.id), "name": old_name})
+    return tenant
