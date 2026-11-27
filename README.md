@@ -20,7 +20,7 @@ Ce dépôt contient le socle technique et les premières fonctions métier : les
 | Référentiels (US-02) | Articles (matière, emballage, semi-fini, produit fini), allergènes obligatoires pour les matières (14 allergènes UE), conversions d'unités (1 sac = 25 kg), fournisseurs et clients, import CSV tout ou rien. Écran : http://localhost:3000/referentiels |
 | Journal d'audit (US-03) | Qui a créé, modifié ou importé quoi, quand, avec l'ancienne et la nouvelle valeur. Filtres par objet, action, utilisateur et dates. Lecture seule, rôles Admin et Qualité. Écran : http://localhost:3000/journal |
 | Lots et traçabilité | Réception d'une livraison fournisseur guidée par listes, avec annulation tant que le lot n'a pas servi (écran : http://localhost:3000/receptions), stock par lot calculé depuis les mouvements, jamais négatif, blocage avec motif, annulation par contre-mouvement. Les motifs (blocage, réception non conforme, annulation, double validation) se choisissent dans des listes fermées, visibles sur http://localhost:3000/api/v1/approvals/reasons/ une fois connecté. Recherche aval (lot fournisseur vers lots produits et clients livrés) et amont. Écran : http://localhost:3000/tracabilite |
-| Tests automatiques | 118 tests, dont l'isolation entre clients et l'immuabilité de l'audit |
+| Tests automatiques | 279 tests, dont l'isolation entre clients et l'immuabilité de l'audit |
 
 ## Lancer Tracalys sur ton ordinateur
 
@@ -147,7 +147,7 @@ Les fiches sont visibles par l'Admin, la Qualité et la Production. Les rôles O
 
 ### 13. Démonstration « mangue séchée bio » (pilote)
 
-Une commande crée une **entreprise de démonstration à part**, « Vergers Bio du Nord (démo) », avec 4 comptes et une saison d'historique : réceptions de mangues fraîches de plusieurs producteurs (code de parcelle dans le n° de lot fournisseur), une livraison refusée puis détruite après double validation, deux séchages, l'ensachage en sachets de 100 g, deux expéditions (Rotterdam et Lyon), et un lot d'ananas séché bloqué en attente d'analyse, à débloquer en direct. Tes données existantes ne sont pas touchées. Producteurs, parcelles et clients sont fictifs.
+Une commande crée une **entreprise de démonstration à part**, « Vergers Bio du Nord (démo) », avec 4 comptes, deux usines fictives (« Usine Nord (démo) » et « Usine Sud (démo) ») et une saison d'historique saisie « après coup depuis une fiche papier » : réceptions de mangues bio par producteur et parcelle (un producteur en conversion), une livraison refusée puis détruite après double validation, mûrissement, trois séchages (dont un sous la fourchette de rendement, signalé en rouge), mise en cartons de 10 kg, contrôle qualité, une palette expédiée à Rotterdam dans un conteneur avec plomb, certificat d'inspection et connaissement, une expédition à Lyon, et un lot d'ananas séché bloqué en attente d'analyse, à débloquer en direct. Le rendement de séchage suit la fourchette publique COLEAD (13 à 18 kg de mangue fraîche pour 1 kg séché). Tes données existantes ne sont pas touchées. Producteurs, parcelles et clients sont fictifs.
 
 Dans PowerShell, dans le dossier du projet :
 
@@ -167,7 +167,15 @@ docker compose exec backend python manage.py demo_mangue_bio --reset
 
 Rien n'est effacé : le journal et les mouvements sont en insertion seule, même pour la démo. L'ancienne entreprise de démo est renommée « ... [archivée le ...] » et désactivée, ses comptes ne peuvent plus se connecter, puis une entreprise de démo neuve est créée avec les mêmes identifiants et un mot de passe redemandé. Les autres entreprises ne sont pas touchées. Par sécurité, la remise à zéro refuse de tourner si un identifiant `demo.*` appartient à une autre entreprise que la démo.
 
-Limites connues, dites franchement pendant la démo : pas encore de champ parcelle (le code de parcelle va dans le n° de lot fournisseur), pas de statut bio par lot ou par producteur (il est dans le nom de l'article), pas d'écran de séchage ni d'ensachage (ordres de fabrication US-06 à US-08 à venir), et le journal date chaque ligne au moment du chargement, pas à la date de juin indiquée sur les mouvements.
+Ce que la démo montre en plus :
+
+- **Statut bio par lot** (bio, conversion, conventionnel), repris de la parcelle à la réception. Écran Production : un mélange bio et non bio est refusé (essaie le lot d'ananas du producteur ADI-02, en conversion).
+- **Bilan matière** (http://localhost:3000/bilan) : consommé, produit, déchets, eau évaporée et rendement par étape, écarts en rouge, saisies tardives signalées.
+- **Rappel depuis un carton ou un conteneur** (http://localhost:3000/rappel) : cherche le code carton affiché à la fin de la commande, ou `TRCU2606001`. Le rapport remonte aux parcelles et descend jusqu'aux clients et conteneurs, imprimable en PDF.
+- **Saisie au moment du geste** : l'heure est celle du serveur. Une saisie de plus de 2 heures après coup exige un motif choisi dans une liste et reste signalée partout.
+- Écrans **Contrôle qualité** (http://localhost:3000/qualite) et **Expéditions** (http://localhost:3000/expeditions). Parcelles, sites et équipements se gèrent dans les référentiels.
+
+Limites connues, dites franchement pendant la démo : pas encore de transfert d'un lot d'une usine à l'autre, pas d'annulation d'une déclaration de production (une erreur se corrige par un ajustement en double validation), pas de rendement de référence pour le mûrissement (à fixer avec le pilote), un contrôle qualité non conforme bloque le lot mais un lot sans contrôle peut partir (simple alerte), et le chiffre de contrôle du numéro de conteneur n'est pas vérifié (seul le format l'est). Le journal date chaque ligne au moment du chargement, pas à la date de juin indiquée sur les mouvements.
 
 ## En cas de problème
 
@@ -195,7 +203,9 @@ backend/            API Django
   audit/            journal d'audit en insertion seule, et son API de lecture
   events/           table d'événements (outbox)
   catalog/          référentiels : articles, allergènes, conversions d'unités, fournisseurs et clients
-  lots/             lots, mouvements (insertion seule), généalogie, recherche amont et aval
+  lots/             lots, mouvements (insertion seule), généalogie, contrôle qualité, recherche amont et aval, rapport de rappel
+  production/       équipements, déclarations d'étapes (mûrissement, séchage, cartons, palettes), bilan matière
+  shipping/         expéditions par conteneur, plomb, certificat d'inspection et connaissement
 frontend/           écrans Next.js (accueil, référentiels, journal d'audit, traçabilité) et modèles CSV dans public/modeles/
 docker/             script de création des rôles PostgreSQL
 scripts/test.sh     lance les tests

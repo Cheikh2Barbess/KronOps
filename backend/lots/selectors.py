@@ -218,7 +218,8 @@ def recall_report(*, origins):
     derived, _ = downstream(origins=scope)
     affected = {lot.id: lot for lot in [*scope, *derived]}
     for lot in [*origins, *contents]:
-        affected.setdefault(lot.id, lot)
+        if lot.article.article_type != Article.Type.EMBALLAGE:
+            affected.setdefault(lot.id, lot)
     ids = list(affected.keys())
 
     movements = (

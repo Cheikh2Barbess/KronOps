@@ -93,6 +93,8 @@ def test_two_sites_and_cartons_still_in_stock(demo):
         assert set(Lot.objects.values_list("site__name", flat=True)) == {"Usine Nord (démo)", "Usine Sud (démo)"}
     data = client_for(demo).get("/api/v1/traceability/recall/", {"search": "TRCU2607002"}).json()
     assert [Decimal(r["balance"]) for r in data["in_stock"] if r["article_code"] == "MGAC"] == [Decimal("70")]
+    # Les cartons vides (emballage) ne sont pas du produit a bloquer.
+    assert all(r["article_type"] != "emballage" for r in data["in_stock"] + data["affected"])
 
 
 def test_history_has_a_destroyed_lot_and_a_blocked_lot_to_release(demo):

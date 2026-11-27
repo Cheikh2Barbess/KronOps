@@ -5,6 +5,7 @@
 // de lot ecrit par le fournisseur (une identite) et les mesures (quantite, date, temperature).
 // Les regles (DLC obligatoire, temperature, motif) sont appliquees par l'API, l'ecran les rappelle.
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { LateEntry, LateFlag, ORGANIC, OrganicBadge, lateFields } from "@/components/Codes";
 import { Person } from "@/components/Person";
 import { api, ApiError } from "@/lib/api";
 
@@ -20,8 +21,18 @@ type Article = {
   storage: string;
   conversions: Conversion[];
 };
-type Supplier = { id: string; name: string; city: string };
-type Options = { articles: Article[]; suppliers: Supplier[]; reception_reasons: Option[]; reversal_reasons: Option[] };
+type Parcel = { id: string; code: string; locality: string; organic_status: string };
+type Supplier = { id: string; name: string; city: string; parcels: Parcel[] };
+type Site = { id: string; name: string };
+type Options = {
+  articles: Article[];
+  suppliers: Supplier[];
+  reception_reasons: Option[];
+  reversal_reasons: Option[];
+  late_reasons: Option[];
+  organic_statuses: Option[];
+  sites: Site[];
+};
 type Row = {
   movement_id: string;
   lot_id: string;
@@ -40,6 +51,9 @@ type Row = {
   reversed: boolean;
   reversal_reason: string | null;
   can_reverse: boolean;
+  organic_status: string;
+  parcel_code: string | null;
+  late: boolean;
 };
 type CreatedLot = { code: string; status: string; balance: string; base_unit: string; block_reason: string };
 
@@ -103,12 +117,17 @@ function ReceptionForm({ options, onDone }: { options: Options; onDone: (lot: Cr
   const [unit, setUnit] = useState("");
   const [quantity, setQuantity] = useState("");
   const [visual, setVisual] = useState<"" | "ok" | "ko">("");
-  const [paper, setPaper] = useState(false);
+  const [supplierId, setSupplierId] = useState("");
+  const [parcelId, setParcelId] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
   const article = options.articles.find((a) => a.id === articleId);
   const needsDate = article !== undefined && article.article_type !== "emballage";
   const needsTemperature = article !== undefined && ["refrigere", "congele"].includes(article.storage);
+  const supplier = options.suppliers.find((x) => x.id === supplierId);
+  const parcels = supplier?.parcels || [];
+  const parcel = parcels.find((p) => p.id === parcelId);
+  const needsOrganic = article !== undefined && article.article_type !== "emballage";
   const factor = article && unit && unit !== article.base_unit ? Number(article.conversions.find((c) => c.unit_name === unit)?.factor || 0) : 1;
   const qty = Number(quantity.replace(",", "."));
   const grouped = useMemo(() => {
@@ -130,7 +149,7 @@ function ReceptionForm({ options, onDone }: { options: Options; onDone: (lot: Cr
     const text = (name: string) => String(form.get(name) || "").trim();
     const payload: Record<string, unknown> = {
       article: articleId,
-      supplier: text("supplier"),
+      supplier: supplierId,
       supplier_lot_code: text("supplier_lot_code"),
       quantity: quantity.replace(",", ".").trim(),
       unit,
@@ -145,7 +164,12 @@ function ReceptionForm({ options, onDone }: { options: Options; onDone: (lot: Cr
       payload.reason_code = text("reason_code");
       payload.comment = text("comment");
     }
-    if (paper && text("occurred_at")) payload.occurred_at = new Date(text("occurred_at")).toISOString();
+    if (text("site")) payload.site = text("site");
+    if (needsOrganic) {
+      if (parcelId) payload.parcel = parcelId;
+      else payload.organic_status = text("organic_status");
+    }
+    Object.assign(payload, lateFields(form));
     setSending(true);
     try {
       const lot = await api<CreatedLot>("lots/receptions/", { method: "POST", body: JSON.stringify(payload) });
@@ -160,9 +184,31 @@ function ReceptionForm({ options, onDone }: { options: Options; onDone: (lot: Cr
   const row = { display: "flex", flexWrap: "wrap" as const, gap: 8, alignItems: "center" };
   return (
     <form onSubmit={onSubmit} style={{ display: "grid", gap: 12, maxWidth: 760, border: "1px solid #888", padding: 12 }}>
+      {options.sites.length > 1 && (
+        <label>
+          Site de réception{" "}
+          <select name="site" required defaultValue="">
+            <option value="" disabled>
+              (choisir)
+            </option>
+            {options.sites.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.name}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
       <label>
-        1. Fournisseur{" "}
-        <select name="supplier" required defaultValue="">
+        1. Fournisseur (producteur){" "}
+        <select
+          required
+          value={supplierId}
+          onChange={(e) => {
+            setSupplierId(e.target.value);
+            setParcelId("");
+          }}
+        >
           <option value="" disabled>
             (choisir)
           </option>
@@ -211,6 +257,38 @@ function ReceptionForm({ options, onDone }: { options: Options; onDone: (lot: Cr
               </span>
             )}
           </div>
+          {needsOrganic && (
+            <div style={row}>
+              {parcels.length > 0 && (
+                <label>
+                  Parcelle{" "}
+                  <select value={parcelId} onChange={(e) => setParcelId(e.target.value)}>
+                    <option value="">(pas de parcelle : choisir le statut bio)</option>
+                    {parcels.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.code}
+                        {p.locality ? ` · ${p.locality}` : ""} · {ORGANIC[p.organic_status]}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
+              {parcel ? (
+                <span>
+                  Statut bio repris de la parcelle : <OrganicBadge status={parcel.organic_status} />
+                </span>
+              ) : (
+                <span>
+                  Statut bio :{" "}
+                  {options.organic_statuses.map((o) => (
+                    <label key={o.code} style={{ marginRight: 8 }}>
+                      <input type="radio" name="organic_status" value={o.code} required /> {o.label}
+                    </label>
+                  ))}
+                </span>
+              )}
+            </div>
+          )}
           <label>
             4. Numéro de lot du fournisseur <input name="supplier_lot_code" style={{ width: 200 }} />{" "}
             <small style={{ color: "#555" }}>(tel qu&apos;écrit sur l&apos;étiquette, si le fournisseur en donne un)</small>
@@ -246,17 +324,7 @@ function ReceptionForm({ options, onDone }: { options: Options; onDone: (lot: Cr
               <span style={{ color: "#a00" }}>Le lot sera créé bloqué.</span>
             </div>
           )}
-          <div style={row}>
-            <label>
-              <input type="checkbox" checked={paper} onChange={(e) => setPaper(e.target.checked)} /> Je ressaisis une fiche
-              papier (coupure réseau)
-            </label>
-            {paper && (
-              <label>
-                Date et heure réelles <input type="datetime-local" name="occurred_at" required />
-              </label>
-            )}
-          </div>
+          <LateEntry reasons={options.late_reasons} />
           <div>
             <button type="submit" disabled={sending}>
               {sending ? "Enregistrement..." : "Enregistrer la réception"}
@@ -293,9 +361,13 @@ function ReceptionRow({ row, reasons, onChanged }: { row: Row; reasons: Option[]
   else if (row.lot_status === "bloque" && row.block_reason) state = `Bloqué : ${row.block_reason}`;
   return (
     <tr style={{ borderTop: "1px solid #ddd", verticalAlign: "top" }}>
-      <td>{when(row.occurred_at)}</td>
       <td>
-        <strong>{row.lot_code}</strong>
+        {when(row.occurred_at)}
+        <br />
+        <LateFlag late={row.late} />
+      </td>
+      <td>
+        <strong>{row.lot_code}</strong> <OrganicBadge status={row.organic_status} />
         <br />
         <small>
           {row.article_code} {row.article_name}
@@ -303,6 +375,12 @@ function ReceptionRow({ row, reasons, onChanged }: { row: Row; reasons: Option[]
       </td>
       <td>
         {row.supplier_name}
+        {row.parcel_code && (
+          <>
+            <br />
+            <small>parcelle {row.parcel_code}</small>
+          </>
+        )}
         {row.supplier_lot_code && (
           <>
             <br />
