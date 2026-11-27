@@ -54,7 +54,7 @@ def step_order():
 
 
 def routes():
-    """Parcours de l'entreprise, avec leurs etapes (dans l'ordre de l'entreprise) et leurs articles."""
+    """Parcours de l'entreprise, avec leurs etapes (dans l'ordre du parcours) et leurs articles."""
     order = step_order()
     labels = dict(ProductionRun.Step.choices)
     found = list(
@@ -64,7 +64,7 @@ def routes():
         ).order_by("name")
     )
     for route in found:
-        codes = sorted((s.step for s in route.steps.all()), key=lambda c: order.get(c, len(order)))
+        codes = _ordered([(s.step, s.position) for s in route.steps.all()], order)
         route.step_rows = [{"code": c, "label": labels.get(c, c)} for c in codes]
         route.article_rows = [{"id": ra.article_id, "code": ra.article.code, "name": ra.article.name}
                               for ra in route.articles.all()]
@@ -79,21 +79,34 @@ def route_or_404(*, route_id):
 
 
 def route_steps_by_article():
-    """Article (id) vers les etapes permises par son parcours actif, dans l'ordre de l'entreprise.
+    """Article (id) vers les etapes permises par son parcours actif, dans l'ordre du parcours.
 
     Un article absent du resultat n'a pas de parcours actif : il suit les etapes de l'entreprise.
     """
     order = step_order()
     steps = {}
-    for step in RouteStep.objects.filter(route__is_active=True).values_list("route_id", "step"):
-        steps.setdefault(step[0], []).append(step[1])
+    for route_id, step, position in RouteStep.objects.filter(route__is_active=True).values_list(
+        "route_id", "step", "position"
+    ):
+        steps.setdefault(route_id, []).append((step, position))
     result = {}
     for route_id, article_id, name in RouteArticle.objects.filter(route__is_active=True).values_list(
         "route_id", "article_id", "route__name"
     ):
-        codes = sorted(steps.get(route_id, []), key=lambda c: order.get(c, len(order)))
-        result[article_id] = {"route": name, "steps": codes}
+        result[article_id] = {"route": name, "route_id": str(route_id),
+                              "steps": _ordered(steps.get(route_id, []), order)}
     return result
+
+
+def active_routes():
+    """Parcours actifs et leurs etapes dans l'ordre du parcours (ecran de declaration)."""
+    return [{"id": str(r.id), "name": r.name, "steps": [s["code"] for s in r.step_rows]}
+            for r in routes() if r.is_active]
+
+
+def _ordered(pairs, order):
+    """Etapes (code, position) dans l'ordre du parcours. A egalite (anciennes lignes), ordre de l'entreprise."""
+    return [c for c, _ in sorted(pairs, key=lambda p: (p[1], order.get(p[0], len(order))))]
 
 
 def pipeline():

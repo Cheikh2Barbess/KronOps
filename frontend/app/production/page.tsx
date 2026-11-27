@@ -36,6 +36,7 @@ type Lot = {
   site_name: string | null;
   balance: string;
   route_steps: string[] | null;
+  route_id: string | null;
 };
 type Conversion = { unit_name: string; factor: string };
 type OutArticle = {
@@ -48,10 +49,13 @@ type OutArticle = {
   yield_max_pct: string | null;
   conversions: Conversion[];
   route_steps: string[] | null;
+  route_id: string | null;
 };
 type Equipment = { id: string; code: string; name: string; equipment_type: string; site: string | null; site_name: string | null };
+type Route = { id: string; name: string; steps: string[] };
 type Options = {
   steps: Option[];
+  routes: Route[];
   equipment: Equipment[];
   sites: { id: string; name: string }[];
   lots: Lot[];
@@ -74,6 +78,8 @@ type InputRow = { lot: string; quantity: string };
 
 function DeclareForm({ options, onDone }: { options: Options; onDone: (run: Run) => void }) {
   const [step, setStep] = useState("");
+  // Produit (parcours) choisi : ses etapes s'affichent dans l'ordre de son parcours. Vide = etapes de l'entreprise.
+  const [routeId, setRouteId] = useState("");
   const [equipmentId, setEquipmentId] = useState("");
   const [rows, setRows] = useState<InputRow[]>([{ lot: "", quantity: "" }]);
   const [articleId, setArticleId] = useState("");
@@ -85,8 +91,16 @@ function DeclareForm({ options, onDone }: { options: Options; onDone: (run: Run)
   const [sending, setSending] = useState(false);
 
   // Parcours par produit : un article ou un lot dont le parcours ne prevoit pas l'etape n'est pas propose.
-  const fits = (routeSteps: string[] | null) => !step || !routeSteps || routeSteps.includes(step);
-  const outputArticles = options.output_articles.filter((a) => fits(a.route_steps));
+  // Produit choisi : seuls ses articles et lots (et ceux sans parcours) sont proposes.
+  const fits = (routeSteps: string[] | null, rid: string | null = null) =>
+    (!routeId || !rid || rid === routeId) && (!step || !routeSteps || routeSteps.includes(step));
+  const outputArticles = options.output_articles.filter((a) => fits(a.route_steps, a.route_id));
+  const route = options.routes.find((r) => r.id === routeId);
+  const stepLabel = Object.fromEntries(options.steps.map((s) => [s.code, s.label]));
+  // Etapes du parcours dans son ordre (seulement celles actives pour l'entreprise), sinon celles de l'entreprise.
+  const stepButtons = route
+    ? route.steps.filter((c) => stepLabel[c]).map((c) => ({ code: c, label: stepLabel[c] }))
+    : options.steps;
   const lotById = useMemo(() => Object.fromEntries(options.lots.map((l) => [l.id, l])), [options.lots]);
   const article = options.output_articles.find((a) => a.id === articleId);
   const equipment = options.equipment.filter((e) => !step || (STEP_EQUIPMENT[step] || []).includes(e.equipment_type) || e.equipment_type === "autre");
@@ -146,16 +160,37 @@ function DeclareForm({ options, onDone }: { options: Options; onDone: (run: Run)
   const needsSite = options.sites.length > 1 && !equipmentSite;
   // Un lot se consomme dans l'usine ou il se trouve : les autres sont caches (transfert d'abord).
   const workSite = equipmentSite || siteId || null;
-  const lotsOnRoute = options.lots.filter((l) => l.article_type === "emballage" || fits(l.route_steps));
+  const lotsOnRoute = options.lots.filter((l) => l.article_type === "emballage" || fits(l.route_steps, l.route_id));
   const hiddenOffRoute = options.lots.length - lotsOnRoute.length;
   const lotsHere = lotsOnRoute.filter((l) => !workSite || !l.site || l.site === workSite);
   const hiddenElsewhere = lotsOnRoute.length - lotsHere.length;
   return (
     <form onSubmit={onSubmit} style={{ display: "grid", gap: 14, maxWidth: 860, border: "1px solid #888", padding: 12 }}>
       <div>
+        {options.routes.length > 0 && (
+          <div style={{ marginBottom: 10 }}>
+            <strong>Produit</strong>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 6 }}>
+              {[{ id: "", name: "Toutes les étapes", steps: [] as string[] }, ...options.routes].map((r) => (
+                <button
+                  type="button"
+                  key={r.id || "all"}
+                  onClick={() => {
+                    setRouteId(r.id);
+                    setStep("");
+                    setArticleId("");
+                  }}
+                  style={{ ...big, background: routeId === r.id ? "#0d47a1" : undefined, color: routeId === r.id ? "white" : undefined }}
+                >
+                  {r.name}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
         <strong>1. Étape</strong>
         <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 6 }}>
-          {options.steps.map((s) => (
+          {stepButtons.map((s) => (
             <button
               type="button"
               key={s.code}
@@ -255,7 +290,7 @@ function DeclareForm({ options, onDone }: { options: Options; onDone: (run: Run)
             )}
             {hiddenOffRoute > 0 && (
               <p style={{ color: "#555", margin: "6px 0 0" }}>
-                {hiddenOffRoute} lot(s) ne sont pas proposés : leur parcours ne prévoit pas cette étape.
+                {hiddenOffRoute} lot(s) ne sont pas proposés : autre produit, ou leur parcours ne prévoit pas cette étape.
               </p>
             )}
             {statuses.size > 1 && (

@@ -394,15 +394,22 @@ def _clean_route(*, route_id, name, steps, articles):
 def _route_values(route):
     return {
         "name": route.name, "is_active": route.is_active,
-        "steps": sorted(route.steps.values_list("step", flat=True)),
+        "steps": list(route.steps.order_by("position").values_list("step", flat=True)),
         "articles": sorted(str(a) for a in route.articles.values_list("article_id", flat=True)),
     }
 
 
 def _set_route_members(*, tenant_id, route, steps, articles):
+    # `steps` est ordonnee : sa place dans la liste est l'ordre du parcours (1, 2, 3...).
     RouteStep.objects.filter(route=route).exclude(step__in=steps).delete()
-    have = set(RouteStep.objects.filter(route=route).values_list("step", flat=True))
-    RouteStep.objects.bulk_create([RouteStep(tenant_id=tenant_id, route=route, step=c) for c in steps if c not in have])
+    have = {r.step: r for r in RouteStep.objects.filter(route=route)}
+    for position, code in enumerate(steps, start=1):
+        row = have.get(code)
+        if row is None:
+            RouteStep.objects.create(tenant_id=tenant_id, route=route, step=code, position=position)
+        elif row.position != position:
+            row.position = position
+            row.save(update_fields=["position", "updated_at"])
     ids = [a.id for a in articles]
     RouteArticle.objects.filter(route=route).exclude(article_id__in=ids).delete()
     have = set(RouteArticle.objects.filter(route=route).values_list("article_id", flat=True))

@@ -168,10 +168,12 @@ class ProductRoute(TenantModel):
 
 
 class RouteStep(TenantModel):
-    """Etape permise dans un parcours. L'ordre affiche est celui choisi pour l'entreprise (StepSetting)."""
+    """Etape permise dans un parcours, a sa place dans l'ordre propre au parcours (la coco casse avant de laver)."""
 
     route = models.ForeignKey(ProductRoute, on_delete=models.CASCADE, related_name="steps")
     step = models.CharField("étape", max_length=20, choices=ProductionRun.Step.choices)
+    # 0 pour les lignes creees avant l'ordre par parcours : elles suivent alors l'ordre de l'entreprise.
+    position = models.PositiveSmallIntegerField("ordre", default=0)
 
     class Meta:
         verbose_name = "étape d'un parcours"

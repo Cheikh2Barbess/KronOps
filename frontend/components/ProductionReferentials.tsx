@@ -477,6 +477,12 @@ function RouteEditor({
   const elsewhere: Record<string, string> = {};
   routes.filter((r) => r.id !== route?.id).forEach((r) => r.articles.forEach((a) => (elsewhere[a.id] = r.name)));
   const flip = (list: string[], value: string) => (list.includes(value) ? list.filter((v) => v !== value) : [...list, value]);
+  const labelOf: Record<string, string> = Object.fromEntries(steps.map((s) => [s.code, s.label]));
+  const move = (list: string[], i: number, delta: number) => {
+    const next = [...list];
+    [next[i], next[i + delta]] = [next[i + delta], next[i]];
+    return next;
+  };
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -502,12 +508,31 @@ function RouteEditor({
         </label>
       )}
       <fieldset>
-        <legend>Étapes permises (étapes actives de l&apos;entreprise)</legend>
+        <legend>Étapes du parcours, dans l&apos;ordre du procédé de ce produit</legend>
+        {/* Etapes cochees d'abord, dans l'ordre du parcours (fleches), puis les autres etapes actives. */}
+        {chosenSteps.map((code, i) => (
+          <div key={code} style={{ display: "flex", gap: 6, alignItems: "center" }}>
+            <label>
+              <input type="checkbox" checked onChange={() => setChosenSteps(flip(chosenSteps, code))} /> {i + 1}. {labelOf[code] || code}
+            </label>
+            <button type="button" aria-label={`Monter ${labelOf[code]}`} disabled={i === 0} onClick={() => setChosenSteps(move(chosenSteps, i, -1))}>
+              ↑
+            </button>
+            <button
+              type="button"
+              aria-label={`Descendre ${labelOf[code]}`}
+              disabled={i === chosenSteps.length - 1}
+              onClick={() => setChosenSteps(move(chosenSteps, i, 1))}
+            >
+              ↓
+            </button>
+          </div>
+        ))}
         {steps
-          .filter((s) => s.is_active)
+          .filter((s) => s.is_active && !chosenSteps.includes(s.code))
           .map((s) => (
-            <label key={s.code} style={{ display: "block" }}>
-              <input type="checkbox" checked={chosenSteps.includes(s.code)} onChange={() => setChosenSteps(flip(chosenSteps, s.code))} /> {s.label}
+            <label key={s.code} style={{ display: "block", color: "#555" }}>
+              <input type="checkbox" checked={false} onChange={() => setChosenSteps([...chosenSteps, s.code])} /> {s.label}
             </label>
           ))}
       </fieldset>
@@ -567,9 +592,9 @@ export function RouteSection() {
     <section>
       <h2>Parcours par produit</h2>
       <p style={{ color: "#555", maxWidth: 640 }}>
-        Un parcours dit quelles étapes un produit traverse (par exemple, la coco passe par le cassage, la mangue
-        non). À la déclaration, seuls les articles et les lots qui prévoient l&apos;étape choisie sont proposés. Un
-        article sans parcours suit toutes les étapes actives.
+        Un parcours dit quelles étapes un produit traverse et dans quel ordre (par exemple, la coco est cassée et
+        parée avant le lavage, la mangue n&apos;a pas de cassage). À la déclaration, on choisit le produit et ses étapes
+        s&apos;affichent dans l&apos;ordre de son parcours. Un article sans parcours suit les étapes actives de l&apos;entreprise.
       </p>
       <table cellPadding={4} style={{ borderCollapse: "collapse" }}>
         <thead>
@@ -587,7 +612,7 @@ export function RouteSection() {
                 {r.name}
                 {!r.is_active && " (désactivé)"}
               </td>
-              <td>{r.steps.map((s) => s.label).join(", ")}</td>
+              <td>{r.steps.map((s, i) => `${i + 1}. ${s.label}`).join(" → ")}</td>
               <td>{r.articles.map((a) => a.code).join(", ")}</td>
               <td>
                 {isAdmin && (
