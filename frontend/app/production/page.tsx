@@ -60,11 +60,20 @@ type Options = {
   late_reasons: Option[];
   cancel_reasons: Option[];
 };
+// Equipements proposes pour chaque etape (les equipements « Autre » sont toujours proposes).
 const STEP_EQUIPMENT: Record<string, string[]> = {
   murissement: ["murissement"],
+  lavage: ["preparation"],
   tri: ["tri"],
   preparation: ["preparation"],
+  cassage: ["preparation"],
+  parage: ["preparation"],
+  epluchage_decoupe: ["preparation"],
+  rapage: ["preparation"],
+  pretraitement: ["preparation"],
   sechage: ["sechoir"],
+  refroidissement: ["sechoir"],
+  tri_finition: ["tri"],
   conditionnement: ["conditionnement"],
   palettisation: ["conditionnement"],
 };
