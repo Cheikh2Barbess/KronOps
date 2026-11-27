@@ -12,6 +12,7 @@ from lots.models import Lot, LotLink, Movement
 from production.models import (
     DEFAULT_ACTIVE_STEPS,
     Equipment,
+    PipelineSetting,
     ProductionInput,
     ProductionRun,
     ProductRoute,
@@ -93,6 +94,27 @@ def route_steps_by_article():
         codes = sorted(steps.get(route_id, []), key=lambda c: order.get(c, len(order)))
         result[article_id] = {"route": name, "steps": codes}
     return result
+
+
+def pipeline():
+    """Les 8 blocs du pipeline et leurs etapes, avec l'etat pour l'entreprise et le verrou (non modifiable)."""
+    from production.pipeline import BLOCKS, CATALOG, Kind
+
+    production = {r["code"]: r for r in step_catalog()}
+    modules = dict(PipelineSetting.objects.values_list("code", "is_active"))
+    blocks = {n: {"number": n, "label": label, "steps": []} for n, label in BLOCKS}
+    for item in CATALOG:
+        row = {"code": item["code"], "kind": item["kind"], "kind_label": Kind(item["kind"]).label,
+               "path": item.get("path"), "phase": item.get("phase")}
+        if item["kind"] == Kind.TRANSFORMATION:
+            step = production[item["code"]]
+            row.update(label=step["label"], is_active=step["is_active"], locked=False)
+        elif item["kind"] == Kind.MODULE:
+            row.update(label=item["label"], is_active=modules.get(item["code"], True), locked=False)
+        else:
+            row.update(label=item["label"], is_active=item["kind"] == Kind.OBLIGATOIRE, locked=True)
+        blocks[item["block"]]["steps"].append(row)
+    return [blocks[n] for n, _ in BLOCKS]
 
 
 def equipment_list(*, active=None, site_id=None):

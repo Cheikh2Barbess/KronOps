@@ -16,6 +16,7 @@ from catalog.models import Article, OrganicStatus
 from events.services import publish_event
 from lots import reasons, selectors
 from lots.models import ApprovalRequest, Lot, LotLink, LotTransfer, Movement, QualityCheck
+from production.pipeline import require_module
 from tenants.models import User
 
 THOUSANDTH = Decimal("0.001")
@@ -352,6 +353,7 @@ def transfer_lot(*, tenant_id, user, lot_id, to_site, quantity=None, unit=None, 
 
     Le statut (bloque ou non), le statut bio, la parcelle et la date limite suivent le lot.
     """
+    require_module("transfert")
     occurred_at, late_reason_code, late_comment = check_entry_time(occurred_at, late_reason_code, late_comment)
     lot = _lock(lot_id)
     if lot.status == Lot.Status.DETRUIT:
