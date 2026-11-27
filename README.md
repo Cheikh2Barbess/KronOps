@@ -145,6 +145,21 @@ Connecte-toi en Admin, puis « Utilisateurs » sur l'accueil (http://localhost:3
 
 Les fiches sont visibles par l'Admin, la Qualité et la Production. Les rôles Opérateur et Lecture ne voient que les identifiants (données personnelles, principe de minimisation de la loi ivoirienne 2013-450). Pas d'adresse ni de téléphone personnel. Chaque création ou modification est tracée au journal, jamais le mot de passe.
 
+### 13. Démonstration « mangue séchée bio » (pilote)
+
+Une commande crée une **entreprise de démonstration à part**, « Vergers Bio du Nord (démo) », avec 4 comptes et une saison d'historique : réceptions de mangues fraîches de plusieurs producteurs (code de parcelle dans le n° de lot fournisseur), une livraison refusée puis détruite après double validation, deux séchages, l'ensachage en sachets de 100 g, deux expéditions (Rotterdam et Lyon), et un lot d'ananas séché bloqué en attente d'analyse, à débloquer en direct. Tes données existantes ne sont pas touchées. Producteurs, parcelles et clients sont fictifs.
+
+Dans PowerShell, dans le dossier du projet :
+
+```
+docker compose up -d --wait
+docker compose exec backend python manage.py demo_mangue_bio
+```
+
+Attends que la première commande rende la main (db, backend et frontend « Healthy ») avant la seconde. Le mot de passe des 4 comptes est demandé au clavier (10 caractères minimum, rien ne s'affiche, c'est normal). Comptes : `demo.direction` (Admin), `demo.qualite` (Qualité), `demo.production` (Production), `demo.reception` (Opérateur). La commande affiche à la fin les codes à chercher. Elle refuse de tourner deux fois.
+
+Limites connues, dites franchement pendant la démo : pas encore de champ parcelle (le code de parcelle va dans le n° de lot fournisseur), pas de statut bio par lot ou par producteur (il est dans le nom de l'article), pas d'écran de séchage ni d'ensachage (ordres de fabrication US-06 à US-08 à venir), et le journal date chaque ligne au moment du chargement, pas à la date de juin indiquée sur les mouvements.
+
 ## En cas de problème
 
 | Message | Cause probable | Solution |
