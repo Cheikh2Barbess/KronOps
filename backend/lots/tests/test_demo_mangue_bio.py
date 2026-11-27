@@ -106,6 +106,11 @@ def test_three_product_routes_and_a_step_outside_the_route_is_refused(demo):
         mango = Lot.objects.filter(article__code="MGAS").first()
     assert set(found) == {"Mangue séchée", "Ananas séché", "Coco râpée séchée"}
     assert "rapage" in found["Coco râpée séchée"] and "rapage" not in found["Mangue séchée"]
+    # Chaque parcours a son ordre : la coco est cassee et paree avant le lavage.
+    coco = found["Coco râpée séchée"]
+    assert coco.index("cassage") < coco.index("parage") < coco.index("lavage")
+    mango_route = found["Mangue séchée"]
+    assert mango_route.index("murissement") < mango_route.index("lavage")
     # Le rapage est une etape de la coco : refuse sur de la mangue.
     production = client_for(find_user_by_username("demo.production"))
     response = production.post("/api/v1/production/runs/", {

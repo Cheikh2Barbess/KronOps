@@ -42,7 +42,7 @@ def test_admin_creates_a_route_with_steps_and_articles(client_a, orchard, tenant
     body = response.json()
     assert body["name"] == "Mangue séchée"
     assert body["is_active"] is True
-    # Les etapes suivent l'ordre choisi pour l'entreprise, quel que soit l'ordre d'envoi.
+    # Les etapes gardent l'ordre choisi pour ce parcours.
     assert [s["code"] for s in body["steps"]] == MANGO_STEPS
     assert all(s["label"] for s in body["steps"])
     assert sorted(a["code"] for a in body["articles"]) == ["MGC", "MGF", "MGS"]
@@ -100,7 +100,8 @@ def test_update_replaces_steps_and_articles(client_a, orchard, tenant_a):
     assert response.status_code == 200, response.json()
     body = response.json()
     assert body["name"] == "Mangue bio"
-    assert [s["code"] for s in body["steps"]] == ["tri", "sechage"]
+    # L'ordre envoye est l'ordre du parcours, meme s'il differe de celui de l'entreprise.
+    assert [s["code"] for s in body["steps"]] == ["sechage", "tri"]
     assert [a["code"] for a in body["articles"]] == ["MGS"]
     with tenant_context(tenant_a.id):
         assert AuditLog.objects.filter(entity_type="production.productroute", action="update").exists()
@@ -173,3 +174,31 @@ def test_isolation_between_companies(client_a, client_b, orchard, tenant_b):
     assert stolen.status_code == 400
     with tenant_context(tenant_b.id):
         assert ProductRoute.objects.count() == 0
+
+
+COCO = ["cassage", "parage", "lavage", "rapage", "sechage", "conditionnement"]
+
+
+def test_each_route_has_its_own_order(client_a, orchard):
+    """Coco : cassage et parage avant le lavage, alors que l'entreprise range le lavage en premier."""
+    client_a.put(STEPS, {"steps": [{"code": c, "is_active": True} for c in
+                                   ["murissement", "lavage", "tri", "cassage", "parage", "rapage", "sechage",
+                                    "conditionnement"]]}, format="json")
+    coco = mango_route(client_a, orchard, steps=COCO, articles=["carton"], name="Coco râpée").json()
+    assert [s["code"] for s in coco["steps"]] == COCO
+    mango = mango_route(client_a, orchard, steps=["murissement", "lavage", "tri", "sechage"],
+                        articles=["fresh", "dried"]).json()
+    assert [s["code"] for s in mango["steps"]] == ["murissement", "lavage", "tri", "sechage"]
+    options = client_a.get(OPTIONS).json()
+    assert {a["code"]: a["route_steps"] for a in options["output_articles"]}["MGC"] == COCO
+    assert {a["code"]: a["route_id"] for a in options["output_articles"]}["MGC"] == coco["id"]
+    # L'ecran de declaration propose chaque parcours avec ses etapes dans son ordre.
+    assert {r["name"]: r["steps"] for r in options["routes"]}["Coco râpée"] == COCO
+
+    # Reordonner le parcours sans changer ses etapes.
+    reordered = ["lavage", "cassage", "parage", "rapage", "sechage", "conditionnement"]
+    response = client_a.put(f"{ROUTES}{coco['id']}/", {"name": "Coco râpée", "is_active": True, "steps": reordered,
+                                                       "articles": [str(orchard["carton"].id)]}, format="json")
+    assert response.status_code == 200, response.json()
+    assert [s["code"] for s in response.json()["steps"]] == reordered
+    assert [s["code"] for s in client_a.get(f"{ROUTES}{coco['id']}/").json()["steps"]] == reordered

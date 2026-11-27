@@ -155,8 +155,10 @@ class ProductionOptionsView(TenantAPIView):
         lots = AvailableLotSerializer(available, many=True).data
         for lot, row in zip(available, lots):
             row["route_steps"] = (routes.get(lot.article_id) or {}).get("steps")
+            row["route_id"] = (routes.get(lot.article_id) or {}).get("route_id")
         return Response({
             "steps": [{"code": s["code"], "label": s["label"]} for s in selectors.active_steps()],
+            "routes": selectors.active_routes(),
             "equipment": EquipmentSerializer(selectors.equipment_list(active=True), many=True).data,
             "sites": [{"id": str(s.id), "name": s.name} for s in Site.objects.order_by("name")],
             "lots": lots,
@@ -164,7 +166,8 @@ class ProductionOptionsView(TenantAPIView):
                 {"id": str(a.id), "code": a.code, "name": a.name, "article_type": a.article_type,
                  "base_unit": a.base_unit, "yield_min_pct": a.yield_min_pct, "yield_max_pct": a.yield_max_pct,
                  "conversions": [{"unit_name": c.unit_name, "factor": c.factor} for c in a.conversions.all()],
-                 "route_steps": (routes.get(a.id) or {}).get("steps")}
+                 "route_steps": (routes.get(a.id) or {}).get("steps"),
+                 "route_id": (routes.get(a.id) or {}).get("route_id")}
                 for a in articles
             ],
             "waste_reasons": lot_reasons.as_options(reasons.WASTE),
