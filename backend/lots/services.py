@@ -15,7 +15,7 @@ from audit.services import record_audit
 from catalog.models import Article, OrganicStatus
 from events.services import publish_event
 from lots import reasons, selectors
-from lots.models import ApprovalRequest, Lot, LotLink, Movement, QualityCheck
+from lots.models import ApprovalRequest, Lot, LotLink, LotTransfer, Movement, QualityCheck
 from tenants.models import User
 
 THOUSANDTH = Decimal("0.001")
@@ -201,8 +201,8 @@ def receive_lot(*, tenant_id, user, article, supplier, supplier_lot_code, quanti
         errors["supplier"] = ["Ce partenaire n'est pas un fournisseur."]
     if not article.is_active:
         errors["article"] = ["Cet article est désactivé."]
-    if article.article_type != Article.Type.EMBALLAGE and not expiry_date:
-        errors["expiry_date"] = ["DLC ou DDM obligatoire pour cet article."]
+    if article.article_type != Article.Type.EMBALLAGE and not expiry_date and not article.shelf_life_days:
+        errors["expiry_date"] = ["DLC ou DDM obligatoire pour cet article (ou une durée de vie dans le référentiel)."]
     if expiry_date and not date_type:
         errors["date_type"] = ["Préciser s'il s'agit d'une DLC ou d'une DDM."]
     if article.storage in (Article.Storage.REFRIGERE, Article.Storage.CONGELE) and temperature_c is None:
@@ -217,6 +217,10 @@ def receive_lot(*, tenant_id, user, article, supplier, supplier_lot_code, quanti
         block_reason = f"{reasons.RECEPTION_PREFIX} : {reasons.text(reasons.RECEPTION, reason_code, comment)}"
     occurred_at, late_reason_code, late_comment = check_entry_time(occurred_at, late_reason_code, late_comment)
     site = default_site(site)
+    if not expiry_date and article.shelf_life_days and article.article_type != Article.Type.EMBALLAGE:
+        # Fruit frais sans date sur l'etiquette : DDM calculee depuis la duree de vie de l'article.
+        expiry_date = timezone.localtime(occurred_at).date() + datetime.timedelta(days=article.shelf_life_days)
+        date_type = Lot.DateType.DDM
     base_quantity = to_base_quantity(article=article, quantity=quantity, unit=unit)
     return create_lot(
         tenant_id=tenant_id, user=user, article=article, quantity=base_quantity, entry_type=Movement.Type.RECEPTION,
@@ -302,6 +306,8 @@ def reverse_movement(*, tenant_id, user, movement_id, reason_code, comment=""):
         raise ValidationError({"movement": [f"Le lot {lot.code} est détruit."]})
     if movement.movement_type == Movement.Type.ANNULATION:
         raise ValidationError({"movement": ["Une annulation ne s'annule pas. Saisissez un nouveau mouvement."]})
+    if movement.movement_type == Movement.Type.TRANSFERT:
+        raise ValidationError({"movement": ["Un transfert ne s'annule pas : faites un transfert dans l'autre sens."]})
     if Movement.objects.filter(reverses=movement).exists():
         raise ValidationError({"movement": ["Ce mouvement est déjà annulé."]})
     if movement.movement_type in Movement.ENTRY_TYPES:
@@ -326,6 +332,83 @@ def reverse_movement(*, tenant_id, user, movement_id, reason_code, comment=""):
         payload={"movement_id": str(movement.id), "reversal_id": str(reversal.id)},
     )
     return reversal
+
+
+# Transfert entre sites -----------------------------------------------------
+
+
+def _transfer_values(t):
+    return {
+        "source_lot_id": str(t.source_lot_id), "lot_id": str(t.lot_id),
+        "from_site_id": str(t.from_site_id) if t.from_site_id else None, "to_site_id": str(t.to_site_id),
+        "quantity": str(t.quantity), "occurred_at": t.occurred_at.isoformat(), "late_reason_code": t.late_reason_code,
+    }
+
+
+@transaction.atomic
+def transfer_lot(*, tenant_id, user, lot_id, to_site, quantity=None, unit=None, occurred_at=None,
+                 late_reason_code="", late_comment=""):
+    """Transfere tout ou partie d'un lot vers une autre usine. `quantity` vide = tout le stock.
+
+    Le statut (bloque ou non), le statut bio, la parcelle et la date limite suivent le lot.
+    """
+    occurred_at, late_reason_code, late_comment = check_entry_time(occurred_at, late_reason_code, late_comment)
+    lot = _lock(lot_id)
+    if lot.status == Lot.Status.DETRUIT:
+        raise ValidationError({"lot": [f"Le lot {lot.code} est détruit."]})
+    if to_site is None:
+        raise ValidationError({"to_site": ["Choisissez l'usine d'arrivée."]})
+    if lot.site_id == to_site.id:
+        raise ValidationError({"to_site": [f"Le lot {lot.code} est déjà à {to_site.name}."]})
+    balance = selectors.lot_balance(lot.id)
+    if balance <= 0:
+        raise ValidationError({"lot": [f"Le lot {lot.code} n'a plus de stock."]})
+    if quantity is None:
+        base = balance
+    else:
+        base = to_base_quantity(article=lot.article, quantity=quantity, unit=unit or lot.article.base_unit)
+        if base <= 0:
+            raise ValidationError({"quantity": ["La quantité doit être strictement positive."]})
+        if base > balance:
+            raise ValidationError({"quantity": [_over_stock_message(lot, balance)]})
+    entry = lot.movements.filter(movement_type__in=list(Movement.ENTRY_TYPES)).order_by("occurred_at").first()
+    if entry is not None and occurred_at < entry.occurred_at:
+        raise ValidationError({"occurred_at": [f"Le lot {lot.code} n'existait pas encore à cette date."]})
+    from_site = lot.site
+    if base == balance:
+        old = _lot_values(lot)
+        lot.site = to_site
+        lot.save(update_fields=["site", "updated_at"])
+        record_audit(tenant_id=tenant_id, user=user, action="update", entity=lot, old_values=old,
+                     new_values=_lot_values(lot))
+        arrived = lot
+    else:
+        day = timezone.localtime(occurred_at).date()
+        arrived = Lot.objects.create(
+            tenant_id=tenant_id, article=lot.article, code=_next_lot_code(lot.article, day), supplier=lot.supplier,
+            supplier_lot_code=lot.supplier_lot_code, date_type=lot.date_type, expiry_date=lot.expiry_date,
+            production_date=lot.production_date, reception_temperature_c=lot.reception_temperature_c,
+            reception_visual_ok=lot.reception_visual_ok, status=lot.status, block_code=lot.block_code,
+            block_reason=lot.block_reason, organic_status=lot.organic_status, parcel=lot.parcel, site=to_site,
+        )
+        record_audit(tenant_id=tenant_id, user=user, action="create", entity=arrived, new_values=_lot_values(arrived))
+        late = {"late_reason_code": late_reason_code, "late_comment": late_comment}
+        _movement(tenant_id=tenant_id, user=user, lot=lot, movement_type=Movement.Type.TRANSFERT, quantity=-base,
+                  occurred_at=occurred_at, reason=f"Vers {to_site.name} (lot {arrived.code})", **late)
+        _movement(tenant_id=tenant_id, user=user, lot=arrived, movement_type=Movement.Type.TRANSFERT, quantity=base,
+                  occurred_at=occurred_at, reason=f"Depuis {from_site.name if from_site else 'sans site'} "
+                  f"(lot {lot.code})", **late)
+        link_lots(tenant_id=tenant_id, user=user, parent=lot, child=arrived)
+    transfer = LotTransfer.objects.create(
+        tenant_id=tenant_id, source_lot=lot, lot=arrived, from_site=from_site, to_site=to_site, quantity=base,
+        occurred_at=occurred_at, user=user, late_reason_code=late_reason_code, late_comment=late_comment,
+    )
+    record_audit(tenant_id=tenant_id, user=user, action="create", entity=transfer, new_values=_transfer_values(transfer))
+    publish_event(tenant_id=tenant_id, event_type="lot.transferred", payload={
+        "transfer_id": str(transfer.id), "source_lot_id": str(lot.id), "lot_id": str(arrived.id),
+        "to_site_id": str(to_site.id), "quantity": str(base),
+    })
+    return transfer
 
 
 # Controle qualite ---------------------------------------------------------

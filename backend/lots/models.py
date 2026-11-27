@@ -81,8 +81,10 @@ class Movement(TenantModel):
         DESTRUCTION = "destruction", "Destruction"
         RETOUR = "retour", "Retour client"
         ANNULATION = "annulation", "Annulation"
+        TRANSFERT = "transfert", "Transfert entre sites"
 
-    ENTRY_TYPES = {Type.RECEPTION, Type.PRODUCTION, Type.RETOUR}
+    # Un transfert partiel cree un lot a l'usine d'arrivee : son premier mouvement est un transfert (positif).
+    ENTRY_TYPES = {Type.RECEPTION, Type.PRODUCTION, Type.RETOUR, Type.TRANSFERT}
     EXIT_TYPES = {Type.CONSOMMATION, Type.EXPEDITION, Type.REBUT, Type.DESTRUCTION}
 
     lot = models.ForeignKey(Lot, on_delete=models.PROTECT, related_name="movements")
@@ -213,3 +215,28 @@ class QualityCheck(TenantModel):
     class Meta:
         verbose_name = "contrôle qualité"
         indexes = [models.Index(fields=["tenant", "lot", "checked_at"])]
+
+
+class LotTransfer(TenantModel):
+    """Transfert d'un lot d'une usine a une autre. INSERTION SEULE.
+
+    Tout le stock : le lot change de site et garde son code (les etiquettes restent valables).
+    Une partie : un nouveau lot nait a l'usine d'arrivee, enfant du lot d'origine (genealogie et rappel suivis),
+    avec un mouvement de transfert negatif sur l'origine et positif sur le nouveau lot.
+    """
+
+    source_lot = models.ForeignKey(Lot, on_delete=models.PROTECT, related_name="transfers_out")
+    lot = models.ForeignKey(Lot, on_delete=models.PROTECT, related_name="transfers_in",
+                            help_text="Lot a l'arrivee : le meme lot (tout le stock) ou le nouveau lot (une partie).")
+    from_site = models.ForeignKey("tenants.Site", on_delete=models.PROTECT, null=True, blank=True, related_name="+")
+    to_site = models.ForeignKey("tenants.Site", on_delete=models.PROTECT, related_name="+")
+    quantity = models.DecimalField("quantité (unité de base)", max_digits=18, decimal_places=3)
+    occurred_at = models.DateTimeField("date réelle du transfert")
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, null=True, related_name="+")
+    late_reason_code = models.CharField("motif de saisie tardive (code)", max_length=40, blank=True)
+    late_comment = models.TextField("précision sur la saisie tardive", blank=True)
+
+    class Meta:
+        verbose_name = "transfert entre sites"
+        constraints = [models.CheckConstraint(condition=Q(quantity__gt=0), name="transfer_quantity_positive")]
+        indexes = [models.Index(fields=["tenant", "occurred_at"])]

@@ -56,6 +56,7 @@ type Options = {
   output_articles: OutArticle[];
   waste_reasons: Option[];
   late_reasons: Option[];
+  cancel_reasons: Option[];
 };
 const STEP_EQUIPMENT: Record<string, string[]> = {
   murissement: ["murissement"],
@@ -77,6 +78,7 @@ function DeclareForm({ options, onDone }: { options: Options; onDone: (run: Run)
   const [outQty, setOutQty] = useState("");
   const [outUnit, setOutUnit] = useState("");
   const [waste, setWaste] = useState("");
+  const [siteId, setSiteId] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
 
@@ -115,7 +117,7 @@ function DeclareForm({ options, onDone }: { options: Options; onDone: (run: Run)
       output_unit: outUnit,
       ...lateFields(form),
     };
-    if (form.get("site")) payload.site = form.get("site");
+    if (siteId) payload.site = siteId;
     if (num(waste) > 0) {
       payload.waste_quantity = String(num(waste));
       payload.waste_code = form.get("waste_code");
@@ -135,7 +137,12 @@ function DeclareForm({ options, onDone }: { options: Options; onDone: (run: Run)
     }
   }
 
-  const needsSite = options.sites.length > 1 && !(options.equipment.find((e) => e.id === equipmentId)?.site);
+  const equipmentSite = options.equipment.find((e) => e.id === equipmentId)?.site || null;
+  const needsSite = options.sites.length > 1 && !equipmentSite;
+  // Un lot se consomme dans l'usine ou il se trouve : les autres sont caches (transfert d'abord).
+  const workSite = equipmentSite || siteId || null;
+  const lotsHere = options.lots.filter((l) => !workSite || !l.site || l.site === workSite);
+  const hiddenElsewhere = options.lots.length - lotsHere.length;
   return (
     <form onSubmit={onSubmit} style={{ display: "grid", gap: 14, maxWidth: 860, border: "1px solid #888", padding: 12 }}>
       <div>
@@ -173,7 +180,7 @@ function DeclareForm({ options, onDone }: { options: Options; onDone: (run: Run)
           {needsSite && (
             <label>
               Site{" "}
-              <select name="site" required defaultValue="" style={big}>
+              <select name="site" required value={siteId} onChange={(e) => setSiteId(e.target.value)} style={big}>
                 <option value="" disabled>
                   (choisir)
                 </option>
@@ -194,7 +201,7 @@ function DeclareForm({ options, onDone }: { options: Options; onDone: (run: Run)
                 <div key={i} style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center", marginTop: 6 }}>
                   <select value={r.lot} onChange={(e) => setRow(i, { lot: e.target.value, quantity: "" })} style={{ ...big, maxWidth: 480 }}>
                     <option value="">(choisir un lot)</option>
-                    {options.lots.map((l) => (
+                    {lotsHere.map((l) => (
                       <option key={l.id} value={l.id} disabled={rows.some((x, j) => j !== i && x.lot === l.id)}>
                         {l.code} · {l.article_name} · {withUnit(l.balance, l.base_unit)}
                         {l.organic_status ? ` · ${ORGANIC[l.organic_status]}` : ""}
@@ -231,6 +238,12 @@ function DeclareForm({ options, onDone }: { options: Options; onDone: (run: Run)
             <button type="button" onClick={() => setRows((old) => [...old, { lot: "", quantity: "" }])} style={{ ...big, marginTop: 6 }}>
               + Ajouter un lot
             </button>
+            {hiddenElsewhere > 0 && (
+              <p style={{ color: "#555", margin: "6px 0 0" }}>
+                {hiddenElsewhere} lot(s) d&apos;une autre usine ne sont pas proposés. Pour les utiliser ici, faites d&apos;abord un{" "}
+                <a href="/transferts">transfert</a>.
+              </p>
+            )}
             {statuses.size > 1 && (
               <p role="alert" style={{ color: "#b00020" }}>
                 Mélange interdit : ces lots n&apos;ont pas le même statut bio ({[...statuses].map((s) => ORGANIC[s] || "non renseigné").join(", ")}).
@@ -306,6 +319,51 @@ function DeclareForm({ options, onDone }: { options: Options; onDone: (run: Run)
   );
 }
 
+function CancelRun({ run, reasons, onDone }: { run: Run; reasons: Option[]; onDone: () => void }) {
+  const [open, setOpen] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  if (!open)
+    return (
+      <button type="button" onClick={() => setOpen(true)}>
+        Annuler l&apos;étape
+      </button>
+    );
+  async function onSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    setError(null);
+    try {
+      await api(`production/runs/${run.id}/cancel/`, {
+        method: "POST",
+        body: JSON.stringify({ reason_code: form.get("reason_code"), comment: form.get("comment") || "" }),
+      });
+      onDone();
+    } catch (e) {
+      setError(errorText(e));
+    }
+  }
+  return (
+    <form onSubmit={onSubmit} style={{ display: "grid", gap: 6, border: "1px solid #b00020", padding: 6 }}>
+      <small>
+        Les quantités consommées reviennent en stock, le lot {run.output_lot_code} est bloqué. L&apos;étape reste visible, marquée
+        annulée.
+      </small>
+      <CodePicker options={reasons} label="Motif" name="reason_code" commentName="comment" />
+      <span>
+        <button type="submit">Confirmer l&apos;annulation</button>{" "}
+        <button type="button" onClick={() => setOpen(false)}>
+          Garder
+        </button>
+      </span>
+      {error && (
+        <span role="alert" style={{ color: "#b00020" }}>
+          {error}
+        </span>
+      )}
+    </form>
+  );
+}
+
 export default function Production() {
   const [me, setMe] = useState<Me | null | undefined>(undefined);
   const [options, setOptions] = useState<Options | null>(null);
@@ -334,6 +392,7 @@ export default function Production() {
       </main>
     );
   const canDeclare = ["admin", "production", "operateur"].includes(me.role);
+  const canCancel = ["admin", "production"].includes(me.role);
 
   return (
     <main>
@@ -376,7 +435,7 @@ export default function Production() {
           </thead>
           <tbody>
             {runs.map((r) => (
-              <tr key={r.id} style={{ borderTop: "1px solid #ddd", verticalAlign: "top" }}>
+              <tr key={r.id} style={{ borderTop: "1px solid #ddd", verticalAlign: "top", opacity: r.cancelled ? 0.6 : 1 }}>
                 <td>
                   {when(r.ended_at)}
                   <br />
@@ -407,6 +466,18 @@ export default function Production() {
                 </td>
                 <td>
                   <YieldCell run={r} />
+                  {canCancel && options && r.cancellable && (
+                    <div style={{ marginTop: 6 }}>
+                      <CancelRun
+                        run={r}
+                        reasons={options.cancel_reasons}
+                        onDone={() => {
+                          setMessage(`Étape annulée : le lot ${r.output_lot_code} est bloqué, les quantités consommées sont revenues en stock.`);
+                          load();
+                        }}
+                      />
+                    </div>
+                  )}
                 </td>
               </tr>
             ))}

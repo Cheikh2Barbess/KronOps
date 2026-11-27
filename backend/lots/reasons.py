@@ -23,7 +23,9 @@ RECEPTION = BLOCK
 RECEPTION_PREFIX = "Réception non conforme"
 # Code des lots bloques a reception avant les motifs codes de reception (26/11/2026), garde pour l'affichage.
 RECEPTION_NON_CONFORME = "reception_non_conforme"
-BLOCK_AUTO = {RECEPTION_NON_CONFORME: "Réception non conforme"}
+# Lot produit par une declaration annulee : bloque automatiquement, jamais reutilisable.
+RUN_CANCELLED = "declaration_annulee"
+BLOCK_AUTO = {RECEPTION_NON_CONFORME: "Réception non conforme", RUN_CANCELLED: "Déclaration de production annulée"}
 
 # Annulation d'un mouvement (contre-mouvement).
 REVERSAL = {

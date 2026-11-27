@@ -75,6 +75,8 @@ class ShipmentOptionsView(TenantAPIView):
         for row, lot in zip(rows, lots):
             check = checks.get(lot.id)
             row["quality_result"] = check.result if check else None
+            # Un lot jamais controle (ni lui, ni les cartons d'une palette) est refuse a l'expedition.
+            row["quality_ok"], row["quality_reason"] = lot_selectors.quality_clearance(lot)
             row["conversions"] = [{"unit_name": c.unit_name, "factor": c.factor} for c in lot.article.conversions.all()]
         customers = Partner.objects.filter(is_customer=True, is_active=True).order_by("name")
         return Response({

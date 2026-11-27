@@ -31,11 +31,13 @@ from lots.api.serializers import (
     ShipmentSerializer,
     TraceLotSerializer,
     TraceQuerySerializer,
+    TransferCreateSerializer,
+    TransferSerializer,
 )
 from tenants.models import Site, User
 from tenants.permissions import (
-    ApprovalPermission, BlockLotPermission, LotPermission, QualityCheckPermission, ReceptionPermission,
-    TraceabilityPermission,
+    ApprovalPermission, BlockLotPermission, LotPermission, ProductionPermission, QualityCheckPermission,
+    ReceptionPermission, TraceabilityPermission,
 )
 
 
@@ -257,6 +259,45 @@ class QualityOptionsView(TenantAPIView):
     def get(self, request):
         return Response({
             "criteria": reasons.as_options(reasons.QUALITY_CRITERIA),
+            "late_reasons": reasons.as_options(reasons.LATE_ENTRY),
+        })
+
+
+# Transferts entre sites ---------------------------------------------------------
+
+
+class TransferListView(TenantAPIView):
+    """Transferts d'un lot d'une usine a une autre (tout le lot ou une partie)."""
+
+    permission_classes = [IsAuthenticated, ProductionPermission]
+
+    @extend_schema(responses={200: TransferSerializer(many=True)})
+    def get(self, request):
+        return Response(TransferSerializer(selectors.transfers(), many=True).data)
+
+    @extend_schema(request=TransferCreateSerializer, responses={201: TransferSerializer})
+    def post(self, request):
+        serializer = TransferCreateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = dict(serializer.validated_data)
+        lot = selectors.lot_or_404(lot_id=data.pop("lot"))
+        site = Site.objects.filter(pk=data.pop("to_site")).first()
+        if site is None:
+            raise ValidationError({"to_site": ["Introuvable."]})
+        transfer = services.transfer_lot(tenant_id=request.user.tenant_id, user=request.user, lot_id=lot.id,
+                                         to_site=site, unit=data.pop("unit") or None, **data)
+        found = next(t for t in selectors.transfers() if t.id == transfer.id)
+        return Response(TransferSerializer(found).data, status=status.HTTP_201_CREATED)
+
+
+class TransferOptionsView(TenantAPIView):
+    permission_classes = [IsAuthenticated, ProductionPermission]
+
+    @extend_schema(responses={200: dict})
+    def get(self, request):
+        return Response({
+            "sites": [{"id": str(s.id), "name": s.name} for s in Site.objects.order_by("name")],
+            "lots": LotSerializer(selectors.transferable_lots(), many=True).data,
             "late_reasons": reasons.as_options(reasons.LATE_ENTRY),
         })
 

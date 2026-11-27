@@ -88,6 +88,18 @@ class RunSerializer(serializers.Serializer):
     late_reason_code = serializers.CharField()
     late_reason_label = serializers.SerializerMethodField()
     username = serializers.CharField(source="user.username", default=None)
+    cancelled = serializers.SerializerMethodField()
+    cancellable = serializers.SerializerMethodField()
+
+    def get_cancellable(self, run):
+        return getattr(run, "cancellable", None)
+
+    def get_cancelled(self, run):
+        c = getattr(run, "cancelled", None)
+        if c is None:
+            return None
+        return {"at": c.created_at, "by": c.user.username if c.user else None, "reason_code": c.reason_code,
+                "reason": lot_reasons.text(reasons.RUN_CANCEL, c.reason_code, c.comment)}
 
     def get_waste_label(self, run):
         return lot_reasons.text(reasons.WASTE, run.waste_code, run.waste_comment) if run.waste_code else ""
@@ -130,3 +142,8 @@ class AvailableLotSerializer(serializers.Serializer):
     site = serializers.UUIDField(source="site_id", allow_null=True)
     site_name = serializers.CharField(source="site.name", default=None)
     balance = serializers.DecimalField(max_digits=18, decimal_places=3)
+
+
+class RunCancelSerializer(serializers.Serializer):
+    reason_code = serializers.ChoiceField(choices=list(reasons.RUN_CANCEL))
+    comment = serializers.CharField(required=False, allow_blank=True, default="")

@@ -137,3 +137,21 @@ def test_site_is_required_when_company_has_several(client_a, orchard, site_of_te
 def test_isolation_site_of_other_company_is_not_found(client_a, orchard, site_of_tenant_b):
     response = client_a.post(URL, payload(orchard, orchard["p_bio"], site=str(site_of_tenant_b.id)), format="json")
     assert response.status_code == 400
+
+
+def test_fresh_fruit_without_label_date_gets_a_ddm_from_shelf_life(tenant_a, admin_a, orchard):
+    import datetime
+    from decimal import Decimal
+
+    from catalog import services as catalog
+    from core.tenancy import tenant_context
+    from lots import services as lots
+
+    with tenant_context(tenant_a.id):
+        catalog.update_article(tenant_id=tenant_a.id, user=admin_a, article=orchard["fresh"], shelf_life_days=7)
+        lot = lots.receive_lot(
+            tenant_id=tenant_a.id, user=admin_a, article=orchard["fresh"], supplier=orchard["producer"],
+            supplier_lot_code="", quantity=Decimal("100"), unit="kg", parcel=orchard["p_bio"],
+        )
+    assert lot.date_type == "ddm"
+    assert lot.expiry_date == lot.production_date + datetime.timedelta(days=7)

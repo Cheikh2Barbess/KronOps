@@ -49,14 +49,14 @@ def test_recall_from_a_carton_reaches_three_bio_parcels_and_the_container(demo):
     # Le lot refuse a reception n'est entre dans aucun carton.
     assert "NIO-05" not in {r["parcel_code"] for r in data["affected"]}
     assert [(s["container_number"], s["customer_name"]) for s in data["shipments"]] == [
-        ("TRCU2606001", "Importateur bio Rotterdam (démo)")
+        ("TRCU2606003", "Importateur bio Rotterdam (démo)")
     ]
     assert {r["equipment_code"] for r in data["runs"] if r["step"] == "sechage"} == {"SEC-N1", "SEC-N2"}
 
 
 def test_recall_from_the_container(demo):
-    data = client_for(demo).get("/api/v1/traceability/recall/", {"search": "TRCU2606001"}).json()
-    assert data["container"] == "TRCU2606001"
+    data = client_for(demo).get("/api/v1/traceability/recall/", {"search": "TRCU2606003"}).json()
+    assert data["container"] == "TRCU2606003"
     assert data["summary"]["parcels"] == 3
 
 
@@ -91,7 +91,7 @@ def test_mixing_bio_and_conversion_is_refused_live(demo):
 def test_two_sites_and_cartons_still_in_stock(demo):
     with tenant_context(demo.tenant_id):
         assert set(Lot.objects.values_list("site__name", flat=True)) == {"Usine Nord (démo)", "Usine Sud (démo)"}
-    data = client_for(demo).get("/api/v1/traceability/recall/", {"search": "TRCU2607002"}).json()
+    data = client_for(demo).get("/api/v1/traceability/recall/", {"search": "TRCU2607000"}).json()
     assert [Decimal(r["balance"]) for r in data["in_stock"] if r["article_code"] == "MGAC"] == [Decimal("70")]
     # Les cartons vides (emballage) ne sont pas du produit a bloquer.
     assert all(r["article_type"] != "emballage" for r in data["in_stock"] + data["affected"])
@@ -101,12 +101,12 @@ def test_history_has_a_destroyed_lot_and_a_blocked_lot_to_release(demo):
     with tenant_context(demo.tenant_id):
         assert Lot.objects.filter(status=Lot.Status.DETRUIT, parcel__code="NIO-05").count() == 1
         assert ApprovalRequest.objects.filter(status=ApprovalRequest.Status.APPROVED).count() == 1
-        blocked = Lot.objects.get(status=Lot.Status.BLOQUE)
+        blocked = Lot.objects.get(status=Lot.Status.BLOQUE, block_code="autre")
         assert blocked.article.code == "ANAS"
 
 
 def test_other_company_cannot_see_demo_lots(demo, client_a):
-    assert client_a.get("/api/v1/traceability/recall/", {"search": "TRCU2606001"}).status_code == 404
+    assert client_a.get("/api/v1/traceability/recall/", {"search": "TRCU2606003"}).status_code == 404
 
 
 def test_reset_archives_the_old_demo_and_creates_a_fresh_one(demo, tenant_a, admin_a):
@@ -125,7 +125,7 @@ def test_reset_archives_the_old_demo_and_creates_a_fresh_one(demo, tenant_a, adm
         assert not User.objects.filter(tenant_id=old_tenant_id, is_active=True).exists()
         assert AuditLog.objects.filter(entity_type="tenants.user", new_values__is_active=False).count() == 4
     with tenant_context(fresh.tenant_id):
-        assert Lot.objects.get(status=Lot.Status.BLOQUE).article.code == "ANAS"
+        assert Lot.objects.get(status=Lot.Status.BLOQUE, block_code="autre").article.code == "ANAS"
     # L'autre entreprise n'est pas touchee.
     tenant_a.refresh_from_db()
     assert tenant_a.is_active and tenant_a.name == "Entreprise A"
@@ -153,3 +153,17 @@ def test_reset_refuses_when_a_demo_username_belongs_to_a_real_client(tenant_a):
         call_command("demo_mangue_bio", password=PASSWORD, reset=True)
     tenant_a.refresh_from_db()
     assert tenant_a.is_active and tenant_a.name == "Entreprise A"
+
+
+def test_demo_shows_a_cancelled_run_and_a_transfer(demo):
+    from lots.models import LotTransfer
+    from production.models import RunCancellation
+
+    with tenant_context(demo.tenant_id):
+        cancelled = RunCancellation.objects.select_related("run__output_lot").get()
+        assert cancelled.run.step == "murissement" and cancelled.run.output_lot.status == Lot.Status.BLOQUE
+        transfer = LotTransfer.objects.select_related("to_site").get()
+        assert transfer.to_site.name == "Usine Sud (démo)" and transfer.lot_id != transfer.source_lot_id
+    balance = client_for(demo).get("/api/v1/production/balance/").json()
+    ripening = next(t for t in balance["totals"] if t["step"] == "murissement")
+    assert ripening["runs"] == 2 and ripening["deviations"] == 0

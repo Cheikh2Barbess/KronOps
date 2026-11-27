@@ -163,7 +163,9 @@ class Demo:
                                           factor=Decimal(conversion[1]))
 
         article("mangue", "MGAF", "Mangue Amélie fraîche", "matiere", conversion=("caisse", "20"))
-        article("mure", "MGAM", "Mangue Amélie mûre", "matiere")
+        # Rendement de reference du murissement : VALEUR FICTIVE de demonstration (95 a 100 %), a remplacer par
+        # celle du pilote dans les referentiels.
+        article("mure", "MGAM", "Mangue Amélie mûre", "matiere", yield_min_pct=Decimal("95"), yield_max_pct=Decimal("100"))
         # Fourchette COLEAD 2023 : 13:1 (7,7 %) a 18:1 (5,6 %).
         article("sechee", "MGAS", "Mangue Amélie séchée en vrac", "semi_fini", shelf_life_days=365,
                 yield_min_pct=Decimal("5.5"), yield_max_pct=Decimal("7.7"))
@@ -267,7 +269,7 @@ class Demo:
             occurred_at=_at(d(2026, 6, 9), 10), site=nord, **LATE,
         )
 
-        # Murissement (sans rendement de reference : a fixer avec le pilote), puis le lot mur est reparti
+        # Murissement (rendement de reference fictif, a remplacer par celui du pilote), puis le lot mur est reparti
         # sur deux sechoirs. Le sechoir 2 sort sous la fourchette : ecart signale au bilan.
         mure = self._run("murissement", e["MUR-N1"], [(r1, "1200"), (r2, "1600"), (r3, "1000")], a["mure"],
                          "3724", _at(d(2026, 6, 9), 14), _at(d(2026, 6, 12), 7))
@@ -285,13 +287,19 @@ class Demo:
                         _at(d(2026, 6, 16), 9), _at(d(2026, 6, 16), 10))
         shipping.create_shipment(
             tenant_id=self.t, user=prod, customer=p["rotterdam"], lines=[(pal, Decimal("230"), None)],
-            shipped_at=_at(d(2026, 7, 6), 7), container_number="TRCU2606001", seal_number="SCELLE-DEMO-0001",
+            shipped_at=_at(d(2026, 7, 6), 7), container_number="TRCU2606003", seal_number="SCELLE-DEMO-0001",
             export_document_ref="COI.CI.2026.DEMO-0001", bill_of_lading="BL-DEMO-0001", site=nord, **LATE,
         )
 
         # Deuxieme lot de la saison : autres livraisons, autre sechoir, en partie expedie a Lyon.
         r4 = self._receive(a["mangue"], "KAR-12", "45", d(2026, 6, 16), nord)
         r5 = self._receive(a["mangue"], "SIN-03", "55", d(2026, 6, 16), nord)
+        # Erreur de saisie corrigee : une premiere declaration avec une mauvaise quantite, annulee avec motif.
+        # Les mangues reviennent en stock, le lot produit par erreur est bloque, puis la bonne declaration suit.
+        erreur = self._run("murissement", e["MUR-N1"], [(r4, "900"), (r5, "1100")], a["mure"], "1690",
+                           _at(d(2026, 6, 16), 14), _at(d(2026, 6, 19), 7))
+        production.cancel_run(tenant_id=self.t, user=prod, run_id=erreur.production_run.id,
+                              reason_code="mauvaise_quantite")
         mure2 = self._run("murissement", e["MUR-N1"], [(r4, "900"), (r5, "1100")], a["mure"], "1960",
                           _at(d(2026, 6, 16), 14), _at(d(2026, 6, 19), 7))
         sec3 = self._run("sechage", e["SEC-N3"], [(mure2, "1960")], a["sechee"], "150",
@@ -301,7 +309,7 @@ class Demo:
         self._qc(c3, d(2026, 6, 22), 12, "16.8")
         shipping.create_shipment(
             tenant_id=self.t, user=prod, customer=p["lyon"], lines=[(c3, Decimal("8"), "carton")],
-            shipped_at=_at(d(2026, 7, 9), 7), container_number="TRCU2607002", seal_number="SCELLE-DEMO-0002",
+            shipped_at=_at(d(2026, 7, 9), 7), container_number="TRCU2607000", seal_number="SCELLE-DEMO-0002",
             export_document_ref="COI.CI.2026.DEMO-0002", site=nord, **LATE,
         )
 
@@ -314,13 +322,16 @@ class Demo:
         conv = self._receive(a["ananas"], "ADI-02", "40", day_in, sud)
         dry = self._run("sechage", e["SEC-S1"], [(r6, "2400")], a["ananas_seche"], "160",
                         _at(day_in, 14), _at(day_in + datetime.timedelta(days=1), 6))
+        # Cartons vides envoyes de l'usine Nord vers l'usine Sud pour l'ananas : transfert d'une partie du lot.
+        services.transfer_lot(tenant_id=self.t, user=prod, lot_id=cartons_vides.id, to_site=sud,
+                              quantity=Decimal("30"), occurred_at=_at(day_in, 9), **LATE)
         services.block_lot(tenant_id=self.t, user=q, lot_id=dry.id, reason_code="autre",
                            comment="En attente du résultat d'analyse de résidus de pesticides")
 
         assert ApprovalRequest.objects.filter(status=ApprovalRequest.Status.APPROVED).count() == 1
         return [
             f"Rappel depuis un carton (séchoir 2, écart de rendement) : cherche {c2.code}",
-            "Rappel depuis un conteneur : cherche TRCU2606001",
+            "Rappel depuis un conteneur : cherche TRCU2606003",
             f"Mélange refusé en direct : sèche ensemble {r6.code} (bio) et {conv.code} (en conversion)",
             f"Lot bloqué à débloquer en direct : {dry.code}",
             f"Lot détruit après double validation : {bad.code}",
