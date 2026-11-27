@@ -7,6 +7,7 @@ from django.core.management import CommandError, call_command
 from rest_framework.test import APIClient
 
 from audit.models import AuditLog
+from catalog.models import Partner
 from conftest import PASSWORD, make_user
 from core.tenancy import tenant_context
 from lots.models import ApprovalRequest, Lot
@@ -76,16 +77,74 @@ def test_mixing_bio_and_conversion_is_refused_live(demo):
     with tenant_context(demo.tenant_id):
         bio = Lot.objects.get(article__code="ANAF", parcel__code="BON-21")
         conv = Lot.objects.get(article__code="ANAF", parcel__code="ADI-02")
-        dried = Lot.objects.filter(article__code="ANAS").first().article
+        peeled = Lot.objects.filter(article__code="ANAP").first().article
         from production.models import Equipment
-        dryer = Equipment.objects.get(code="SEC-S1")
+        table = Equipment.objects.get(code="PRE-S1")
     production = client_for(find_user_by_username("demo.production"))
     response = production.post("/api/v1/production/runs/", {
-        "step": "sechage", "output_article": str(dried.id), "output_quantity": "60", "equipment": str(dryer.id),
-        "inputs": [{"lot": str(bio.id), "quantity": "600"}, {"lot": str(conv.id), "quantity": "600"}],
+        "step": "epluchage_decoupe", "output_article": str(peeled.id), "output_quantity": "300",
+        "equipment": str(table.id),
+        "inputs": [{"lot": str(bio.id), "quantity": "300"}, {"lot": str(conv.id), "quantity": "300"}],
     }, format="json")
     assert response.status_code == 400
     assert "Mélange interdit" in response.json()["inputs"][0]
+
+
+def test_steps_are_set_for_dried_fruit_and_one_step_is_switched_off(demo):
+    data = client_for(demo).get("/api/v1/production/steps/").json()
+    active = [r["code"] for r in data if r["is_active"]]
+    assert active[0] == "murissement" and active[-1] == "palettisation" and len(active) == 14
+    assert "preparation" not in active
+    assert active.index("epluchage_decoupe") < active.index("sechage") < active.index("conditionnement")
+
+
+def test_three_product_routes_and_a_step_outside_the_route_is_refused(demo):
+    from production.selectors import routes
+
+    with tenant_context(demo.tenant_id):
+        found = {r.name: [s["code"] for s in r.step_rows] for r in routes()}
+        mango = Lot.objects.filter(article__code="MGAS").first()
+    assert set(found) == {"Mangue séchée", "Ananas séché", "Coco râpée séchée"}
+    assert "rapage" in found["Coco râpée séchée"] and "rapage" not in found["Mangue séchée"]
+    # Le rapage est une etape de la coco : refuse sur de la mangue.
+    production = client_for(find_user_by_username("demo.production"))
+    response = production.post("/api/v1/production/runs/", {
+        "step": "rapage", "output_article": str(mango.article_id), "output_quantity": "1",
+        "inputs": [{"lot": str(mango.id), "quantity": "1"}],
+    }, format="json")
+    assert response.status_code == 400
+    assert "parcours" in str(response.json())
+
+
+def test_coconut_flow_is_traced_from_the_container_to_the_parcel(demo):
+    data = client_for(demo).get("/api/v1/traceability/recall/", {"search": "TRCU2609002"}).json()
+    assert {r["parcel_code"] for r in data["roots"] if r["article_type"] != "emballage"} == {"JAC-04"}
+    assert [s["customer_name"] for s in data["shipments"]] == ["Biscuiterie bio Hambourg (démo)"]
+    steps = {r["step"] for r in data["runs"]}
+    assert {"cassage", "parage", "rapage", "pasteurisation", "sechage", "refroidissement",
+            "conditionnement"} <= steps
+
+
+def test_pineapple_is_peeled_before_drying(demo):
+    with tenant_context(demo.tenant_id):
+        dried = Lot.objects.select_related("production_run").get(article__code="ANAS")
+        peeled = Lot.objects.select_related("production_run").get(article__code="ANAP")
+        assert peeled.production_run.step == "epluchage_decoupe"
+        assert dried.production_run.step == "sechage"
+        assert dried.parent_links.get().parent_lot_id == peeled.id
+
+
+def test_a_non_conforming_quality_check_blocks_a_coconut_lot(demo):
+    with tenant_context(demo.tenant_id):
+        blocked = Lot.objects.get(status=Lot.Status.BLOQUE, block_code="controle_qualite_non_conforme")
+        assert blocked.article.code == "COCK"
+        customer = Partner.objects.get(name="Biscuiterie bio Hambourg (démo)")
+    production = client_for(find_user_by_username("demo.production"))
+    response = production.post("/api/v1/shipments/", {
+        "customer": str(customer.id), "lines": [{"lot": str(blocked.id), "quantity": "1", "unit": "carton"}],
+        "container_number": "TRCU2611000",
+    }, format="json")
+    assert response.status_code == 400
 
 
 def test_two_sites_and_cartons_still_in_stock(demo):
