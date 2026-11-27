@@ -41,10 +41,22 @@ class ProductionRun(TenantModel):
     """Une etape declaree. INSERTION SEULE."""
 
     class Step(models.TextChoices):
+        # Catalogue complet, dans l'ordre habituel du procede (etude COLEAD sur la mangue sechee, plus la coco).
+        # Chaque entreprise active, desactive et ordonne ses etapes (StepSetting). Sans reglage, seules les six
+        # etapes historiques sont actives. Ne jamais retirer un code : des declarations l'utilisent.
         MURISSEMENT = "murissement", "Mûrissement"
+        LAVAGE = "lavage", "Lavage"
         TRI = "tri", "Tri"
         PREPARATION = "preparation", "Préparation (lavage, épluchage, découpe)"
+        CASSAGE = "cassage", "Cassage et écalage (coco)"
+        PARAGE = "parage", "Parage et dépelliculage (coco)"
+        EPLUCHAGE_DECOUPE = "epluchage_decoupe", "Épluchage et découpe"
+        RAPAGE = "rapage", "Râpage ou découpe de la chair (coco)"
+        PRETRAITEMENT = "pretraitement", "Prétraitement (trempage, blanchiment)"
+        PASTEURISATION = "pasteurisation", "Pasteurisation"
         SECHAGE = "sechage", "Séchage"
+        REFROIDISSEMENT = "refroidissement", "Refroidissement et homogénéisation"
+        TRI_FINITION = "tri_finition", "Tri et finition"
         CONDITIONNEMENT = "conditionnement", "Conditionnement (cartons, sachets)"
         PALETTISATION = "palettisation", "Palettisation"
 
@@ -107,3 +119,28 @@ class RunCancellation(TenantModel):
 
     class Meta:
         verbose_name = "annulation de déclaration"
+
+
+DEFAULT_ACTIVE_STEPS = (
+    ProductionRun.Step.MURISSEMENT, ProductionRun.Step.TRI, ProductionRun.Step.PREPARATION,
+    ProductionRun.Step.SECHAGE, ProductionRun.Step.CONDITIONNEMENT, ProductionRun.Step.PALETTISATION,
+)
+
+
+class StepSetting(TenantModel):
+    """Reglage d'une etape du catalogue pour une entreprise : active ou non, et sa place dans la liste.
+
+    Une etape sans ligne garde son reglage par defaut (DEFAULT_ACTIVE_STEPS, ordre du catalogue).
+    Desactiver une etape ne touche pas aux declarations deja faites.
+    """
+
+    step = models.CharField("étape", max_length=20, choices=ProductionRun.Step.choices)
+    is_active = models.BooleanField("active", default=True)
+    position = models.PositiveSmallIntegerField("ordre")
+
+    class Meta:
+        verbose_name = "réglage d'étape"
+        constraints = [models.UniqueConstraint(fields=["tenant", "step"], name="stepsetting_unique_step_per_tenant")]
+
+    def __str__(self):
+        return self.step

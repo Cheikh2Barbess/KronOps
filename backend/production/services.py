@@ -19,7 +19,7 @@ from lots import reasons as lot_reasons
 from lots import services as lots
 from lots.models import Lot, LotLink, Movement
 from production import reasons
-from production.models import Equipment, ProductionInput, ProductionRun, RunCancellation
+from production.models import Equipment, ProductionInput, ProductionRun, RunCancellation, StepSetting
 
 ORGANIC_LABEL = dict(OrganicStatus.choices)
 
@@ -55,6 +55,13 @@ def yield_status(run):
     return "conforme"
 
 
+def _active_steps():
+    # Import local : selectors importe deja ce module (yield_status).
+    from production.selectors import active_steps
+
+    return active_steps()
+
+
 def _run_values(run):
     return {
         "step": run.step, "equipment_id": str(run.equipment_id) if run.equipment_id else None,
@@ -74,6 +81,8 @@ def declare_run(*, tenant_id, user, step, inputs, output_article, output_quantit
     errors = {}
     if step not in ProductionRun.Step.values:
         errors["step"] = ["Choisissez une étape de la liste."]
+    elif step not in {s["code"] for s in _active_steps()}:
+        errors["step"] = [f"L'étape « {ProductionRun.Step(step).label} » est désactivée pour votre entreprise."]
     if not inputs:
         errors["inputs"] = ["Ajoutez au moins un lot consommé."]
     if not output_article.is_active:
@@ -262,3 +271,49 @@ def update_equipment(*, tenant_id, user, equipment, **changes):
         record_audit(tenant_id=tenant_id, user=user, action="update", entity=equipment, old_values=old, new_values=new)
         publish_event(tenant_id=tenant_id, event_type="equipment.updated", payload={"equipment_id": str(equipment.id)})
     return equipment
+
+
+@transaction.atomic
+def configure_steps(*, tenant_id, user, steps):
+    """Active et ordonne les etapes de l'entreprise. `steps` = liste ordonnee de {"code", "is_active"}.
+
+    Les etapes non citees sont desactivees et rangees apres, dans l'ordre du catalogue.
+    Les declarations deja faites ne changent pas.
+    """
+    catalog = list(ProductionRun.Step.values)
+    cited = [s["code"] for s in steps]
+    if not steps:
+        raise ValidationError({"steps": ["Choisissez au moins une étape."]})
+    unknown = [c for c in cited if c not in catalog]
+    if unknown:
+        raise ValidationError({"steps": [f"Étape inconnue : {', '.join(unknown)}."]})
+    if len(set(cited)) != len(cited):
+        raise ValidationError({"steps": ["Une même étape apparaît deux fois."]})
+    if not any(s["is_active"] for s in steps):
+        raise ValidationError({"steps": ["Gardez au moins une étape active."]})
+
+    wanted = {s["code"]: (bool(s["is_active"]), i) for i, s in enumerate(steps)}
+    rest = [c for c in catalog if c not in wanted]
+    for i, code in enumerate(rest):
+        wanted[code] = (False, len(steps) + i)
+
+    existing = {s.step: s for s in StepSetting.objects.select_for_update()}
+    changed = False
+    for code, (is_active, position) in wanted.items():
+        setting = existing.get(code)
+        new = {"step": code, "is_active": is_active, "position": position}
+        if setting is None:
+            setting = StepSetting.objects.create(tenant_id=tenant_id, **new)
+            record_audit(tenant_id=tenant_id, user=user, action="create", entity=setting, new_values=new)
+            changed = True
+            continue
+        old = {"step": code, "is_active": setting.is_active, "position": setting.position}
+        if old != new:
+            setting.is_active, setting.position = is_active, position
+            setting.save(update_fields=["is_active", "position", "updated_at"])
+            record_audit(tenant_id=tenant_id, user=user, action="update", entity=setting, old_values=old,
+                         new_values=new)
+            changed = True
+    if changed:
+        publish_event(tenant_id=tenant_id, event_type="production.steps_configured",
+                      payload={"active": [c for c, (a, _) in sorted(wanted.items(), key=lambda x: x[1][1]) if a]})
