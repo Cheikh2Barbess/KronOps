@@ -346,3 +346,102 @@ export function EquipmentSection() {
     </section>
   );
 }
+
+type StepRow = { code: string; label: string; is_active: boolean; position: number };
+
+// Etapes de production de l'entreprise : liste fermee (pas de texte libre), activable et ordonnable.
+// Seul l'Admin enregistre (verifie par l'API). Une etape desactivee disparait de l'ecran de declaration.
+export function StepSection() {
+  const [rows, setRows] = useState<StepRow[]>([]);
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const load = useCallback(() => {
+    api<StepRow[]>("production/steps/").then(setRows).catch(() => setRows([]));
+  }, []);
+  useEffect(load, [load]);
+  useEffect(() => {
+    api<{ role: string }>("auth/me/")
+      .then((me) => setIsAdmin(me.role === "admin"))
+      .catch(() => setIsAdmin(false));
+  }, []);
+
+  function toggle(code: string) {
+    setMessage(null);
+    setRows((current) => current.map((r) => (r.code === code ? { ...r, is_active: !r.is_active } : r)));
+  }
+  function move(index: number, delta: number) {
+    setMessage(null);
+    setRows((current) => {
+      const target = index + delta;
+      if (target < 0 || target >= current.length) return current;
+      const next = [...current];
+      [next[index], next[target]] = [next[target], next[index]];
+      return next;
+    });
+  }
+  async function save() {
+    setError(null);
+    setMessage(null);
+    try {
+      const saved = await api<StepRow[]>("production/steps/", {
+        method: "PUT",
+        body: JSON.stringify({ steps: rows.map((r) => ({ code: r.code, is_active: r.is_active })) }),
+      });
+      setRows(saved);
+      setMessage("Étapes enregistrées.");
+    } catch (e) {
+      setError(errorText(e));
+    }
+  }
+
+  return (
+    <section>
+      <h2>Étapes de production</h2>
+      <p style={{ color: "#555", maxWidth: 640 }}>
+        Cochez les étapes que vos équipes déclarent, dans l'ordre de votre procédé. Une étape décochée n'est plus
+        proposée à la déclaration. Les déclarations déjà faites restent dans l'historique.
+      </p>
+      <table cellPadding={4} style={{ borderCollapse: "collapse" }}>
+        <tbody>
+          {rows.map((r, i) => (
+            <tr key={r.code} style={{ borderTop: "1px solid #ddd", opacity: r.is_active ? 1 : 0.6 }}>
+              <td>
+                <label>
+                  <input type="checkbox" checked={r.is_active} disabled={!isAdmin} onChange={() => toggle(r.code)} />{" "}
+                  {r.label}
+                </label>
+              </td>
+              {isAdmin && (
+                <td>
+                  <button type="button" aria-label={`Monter ${r.label}`} disabled={i === 0} onClick={() => move(i, -1)}>
+                    ↑
+                  </button>{" "}
+                  <button
+                    type="button"
+                    aria-label={`Descendre ${r.label}`}
+                    disabled={i === rows.length - 1}
+                    onClick={() => move(i, 1)}
+                  >
+                    ↓
+                  </button>
+                </td>
+              )}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {isAdmin ? (
+        <p>
+          <button type="button" onClick={save}>
+            Enregistrer les étapes
+          </button>
+        </p>
+      ) : (
+        <p style={{ color: "#555" }}>Seul l'administrateur de l'entreprise peut modifier les étapes.</p>
+      )}
+      {message && <p role="status">{message}</p>}
+      {error && <p role="alert">{error}</p>}
+    </section>
+  );
+}

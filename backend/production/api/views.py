@@ -17,11 +17,14 @@ from production.api.serializers import (
     RunCancelSerializer,
     RunCreateSerializer,
     RunSerializer,
+    StepConfigureSerializer,
+    StepSettingSerializer,
     StepTotalSerializer,
 )
 from production.models import Equipment, ProductionRun
 from tenants.models import Site
 from tenants.permissions import (
+    IsTenantAdmin,
     MaterialBalancePermission,
     ProductionPermission,
     ReferentialPermission,
@@ -146,7 +149,7 @@ class ProductionOptionsView(TenantAPIView):
             .order_by("article_type", "code")
         )
         return Response({
-            "steps": [{"code": c, "label": label} for c, label in ProductionRun.Step.choices],
+            "steps": [{"code": s["code"], "label": s["label"]} for s in selectors.active_steps()],
             "equipment": EquipmentSerializer(selectors.equipment_list(active=True), many=True).data,
             "sites": [{"id": str(s.id), "name": s.name} for s in Site.objects.order_by("name")],
             "lots": AvailableLotSerializer(selectors.production_options(), many=True).data,
@@ -181,3 +184,24 @@ class MaterialBalanceView(TenantAPIView):
             "steps": [{"code": c, "label": label} for c, label in ProductionRun.Step.choices],
             "sites": [{"id": str(s.id), "name": s.name} for s in Site.objects.order_by("name")],
         })
+
+
+class StepSettingsView(TenantAPIView):
+    """Etapes de production de l'entreprise : lecture pour les roles des referentiels, reglage par l'Admin."""
+
+    def get_permissions(self):
+        if self.request.method == "GET":
+            return [IsAuthenticated(), ReferentialPermission()]
+        return [IsAuthenticated(), IsTenantAdmin()]
+
+    @extend_schema(responses={200: StepSettingSerializer(many=True)})
+    def get(self, request):
+        return Response(StepSettingSerializer(selectors.step_catalog(), many=True).data)
+
+    @extend_schema(request=StepConfigureSerializer, responses={200: StepSettingSerializer(many=True)})
+    def put(self, request):
+        serializer = StepConfigureSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        services.configure_steps(tenant_id=request.user.tenant_id, user=request.user,
+                                 steps=serializer.validated_data["steps"])
+        return Response(StepSettingSerializer(selectors.step_catalog(), many=True).data)

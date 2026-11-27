@@ -147,3 +147,21 @@ class AvailableLotSerializer(serializers.Serializer):
 class RunCancelSerializer(serializers.Serializer):
     reason_code = serializers.ChoiceField(choices=list(reasons.RUN_CANCEL))
     comment = serializers.CharField(required=False, allow_blank=True, default="")
+
+
+class StepSettingSerializer(serializers.Serializer):
+    code = serializers.CharField(read_only=True)
+    label = serializers.CharField(read_only=True)
+    is_active = serializers.BooleanField(read_only=True)
+    position = serializers.IntegerField(read_only=True)
+
+
+class StepChoiceSerializer(serializers.Serializer):
+    code = serializers.CharField(max_length=20)
+    is_active = serializers.BooleanField()
+
+
+class StepConfigureSerializer(serializers.Serializer):
+    """Liste ordonnee des etapes voulues. Les etapes non citees sont desactivees."""
+
+    steps = StepChoiceSerializer(many=True, allow_empty=True)

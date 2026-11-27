@@ -9,10 +9,33 @@ from django.http import Http404
 from lots import selectors as lot_selectors
 from lots import services as lot_services
 from lots.models import Lot, LotLink, Movement
-from production.models import Equipment, ProductionInput, ProductionRun
+from production.models import DEFAULT_ACTIVE_STEPS, Equipment, ProductionInput, ProductionRun, StepSetting
 from production.services import yield_status
 
 PCT = Decimal("0.01")
+
+
+def step_catalog():
+    """Toutes les etapes du catalogue avec le reglage de l'entreprise : actives d'abord, dans l'ordre choisi.
+
+    Une etape sans reglage garde son etat par defaut et sa place dans le catalogue.
+    """
+    settings = {s.step: s for s in StepSetting.objects.all()}
+    catalog = list(ProductionRun.Step.choices)
+    rows = []
+    for index, (code, label) in enumerate(catalog):
+        setting = settings.get(code)
+        if setting is None:
+            rows.append({"code": code, "label": label, "is_active": code in DEFAULT_ACTIVE_STEPS,
+                         "position": index})
+        else:
+            rows.append({"code": code, "label": label, "is_active": setting.is_active, "position": setting.position})
+    return sorted(rows, key=lambda r: (not r["is_active"], r["position"]))
+
+
+def active_steps():
+    """Etapes proposees a la declaration, dans l'ordre choisi par l'entreprise."""
+    return [r for r in step_catalog() if r["is_active"]]
 
 
 def equipment_list(*, active=None, site_id=None):

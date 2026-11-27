@@ -4,7 +4,7 @@
 // Le filtrage et la pagination sont faits par l'API (rapide meme avec des milliers de lignes).
 // Les regles (allergenes obligatoires, fichier refuse en entier) sont appliquees par l'API.
 import { FormEvent, useEffect, useState } from "react";
-import { EquipmentSection, ParcelSection, SiteSection } from "@/components/ProductionReferentials";
+import { EquipmentSection, ParcelSection, SiteSection, StepSection } from "@/components/ProductionReferentials";
 import { api, ApiError } from "@/lib/api";
 
 const UNIT_LABEL: Record<string, string> = { kg: "kg", l: "L", unite: "unité(s)" };
@@ -709,6 +709,7 @@ export default function Referentiels() {
       <PartnerSection />
       <ParcelSection />
       <SiteSection />
+      <StepSection />
       <EquipmentSection />
     </main>
   );
