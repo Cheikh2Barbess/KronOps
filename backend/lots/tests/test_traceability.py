@@ -23,7 +23,7 @@ def genealogy(tenant_a, admin_a, ref_a):
             return services.receive_lot(
                 tenant_id=tenant_a.id, user=admin_a, article=article, supplier=ref_a["supplier"],
                 supplier_lot_code=code, quantity=Decimal(qty), unit=unit, date_type="dlc",
-                expiry_date=datetime.date(2030, 1, 1), visual_ok=True, temperature_c=temp,
+                expiry_date=datetime.date(2030, 1, 1), visual_ok=True, temperature_c=temp, organic_status="conventionnel",
             )
 
         f1 = receive(ref_a["flour"], "100", "kg", "FOUR-FARINE-1")

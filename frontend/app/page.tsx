@@ -55,7 +55,7 @@ export default function Home() {
             Connecté : <strong>{me.username}</strong> ({me.role}) chez <strong>{me.tenant_name}</strong>
           </p>
           <p>
-            <a href="/referentiels">Référentiels : articles, fournisseurs et clients</a>
+            <a href="/referentiels">Référentiels : articles, fournisseurs, clients, parcelles, sites et équipements</a>
           </p>
           {["admin", "qualite", "production", "lecture"].includes(me.role) && (
             <p>
@@ -66,6 +66,31 @@ export default function Home() {
             <p>
               <a href="/receptions">Réceptions : enregistrer une livraison</a>
             </p>
+          )}
+          {["admin", "production", "operateur"].includes(me.role) && (
+            <p>
+              <a href="/production">Production : déclarer une étape (mûrissement, séchage, cartons, palette)</a>
+            </p>
+          )}
+          {["admin", "qualite"].includes(me.role) && (
+            <p>
+              <a href="/qualite">Contrôle qualité d&apos;un lot</a>
+            </p>
+          )}
+          {["admin", "production"].includes(me.role) && (
+            <p>
+              <a href="/expeditions">Expéditions : conteneur, plomb, certificat d&apos;inspection</a>
+            </p>
+          )}
+          {["admin", "qualite", "production", "lecture"].includes(me.role) && (
+            <>
+              <p>
+                <a href="/bilan">Bilan matière : rendements et écarts</a>
+              </p>
+              <p>
+                <a href="/rappel">Rapport de rappel depuis un carton, une palette ou un conteneur</a>
+              </p>
+            </>
           )}
           {["admin", "qualite", "production", "operateur"].includes(me.role) && (
             <p>

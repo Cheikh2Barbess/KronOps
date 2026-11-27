@@ -4,6 +4,7 @@
 // Le filtrage et la pagination sont faits par l'API (rapide meme avec des milliers de lignes).
 // Les regles (allergenes obligatoires, fichier refuse en entier) sont appliquees par l'API.
 import { FormEvent, useEffect, useState } from "react";
+import { EquipmentSection, ParcelSection, SiteSection } from "@/components/ProductionReferentials";
 import { api, ApiError } from "@/lib/api";
 
 const UNIT_LABEL: Record<string, string> = { kg: "kg", l: "L", unite: "unité(s)" };
@@ -18,6 +19,8 @@ type Article = {
   storage: string;
   is_active: boolean;
   allergens: Record<string, string> | null;
+  yield_min_pct: string | null;
+  yield_max_pct: string | null;
 };
 type Partner = {
   id: string;
@@ -71,11 +74,17 @@ function ArticleEditor({
     setError(null);
     const form = new FormData(event.currentTarget);
     const shelfLife = String(form.get("shelf_life_days") || "").trim();
+    const pct = (name: string) => {
+      const v = String(form.get(name) || "").trim().replace(",", ".");
+      return v ? v : null;
+    };
     const payload: Record<string, unknown> = {
       name: String(form.get("name") || "").trim(),
       shelf_life_days: shelfLife ? Number(shelfLife) : null,
       storage: String(form.get("storage") || ""),
       is_active: form.get("is_active") === "on",
+      yield_min_pct: pct("yield_min_pct"),
+      yield_max_pct: pct("yield_max_pct"),
     };
     if (needsAllergens) {
       payload.allergens = Object.fromEntries(allergens.map((a) => [a.code, String(form.get(`allergen_${a.code}`))]));
@@ -145,6 +154,17 @@ function ArticleEditor({
           ))}
         </select>
       </label>
+      {articleType !== "emballage" && (
+        <label>
+          Rendement attendu quand cet article est produit : de{" "}
+          <input name="yield_min_pct" inputMode="decimal" style={{ width: 60 }} defaultValue={article?.yield_min_pct ?? ""} /> à{" "}
+          <input name="yield_max_pct" inputMode="decimal" style={{ width: 60 }} defaultValue={article?.yield_max_pct ?? ""} /> %{" "}
+          <small style={{ color: "#555" }}>
+            (kg obtenus pour 100 kg consommés. Exemple : 13 kg frais pour 1 kg séché = 7,7 %. Hors fourchette, le bilan matière
+            signale l&apos;écart.)
+          </small>
+        </label>
+      )}
       <label>
         <input type="checkbox" name="is_active" defaultChecked={article?.is_active ?? true} /> Actif
       </label>
@@ -687,6 +707,9 @@ export default function Referentiels() {
       <h1>Référentiels</h1>
       <ArticleSection allergens={allergens} />
       <PartnerSection />
+      <ParcelSection />
+      <SiteSection />
+      <EquipmentSection />
     </main>
   );
 }

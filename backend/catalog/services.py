@@ -1,14 +1,19 @@
 """Regles metier du referentiel (US-02). Toute ecriture passe par ici."""
 
+from decimal import Decimal
+
 from django.db import transaction
 from rest_framework.exceptions import ValidationError
 
 from audit.services import record_audit
 from catalog import selectors
-from catalog.models import Article, ArticleAllergen, Partner, UnitConversion
+from catalog.models import Article, ArticleAllergen, Parcel, Partner, UnitConversion
 from events.services import publish_event
 
-ARTICLE_FIELDS = ["code", "name", "article_type", "base_unit", "shelf_life_days", "storage", "is_active"]
+ARTICLE_FIELDS = [
+    "code", "name", "article_type", "base_unit", "shelf_life_days", "storage", "is_active", "yield_min_pct", "yield_max_pct",
+]
+PARCEL_FIELDS = ["code", "locality", "area_ha", "organic_status", "is_active"]
 PARTNER_FIELDS = ["name", "is_supplier", "is_customer", "address", "city", "contact_name", "phone", "email", "is_active"]
 
 
@@ -57,8 +62,13 @@ def _write_allergens(*, tenant_id, article, allergens):
 # Articles -----------------------------------------------------------------
 
 
+def _json(value):
+    # Les decimaux vont dans le journal (JSON) sous forme de texte exact.
+    return str(value) if isinstance(value, Decimal) else value
+
+
 def article_snapshot(article):
-    values = {f: getattr(article, f) for f in ARTICLE_FIELDS}
+    values = {f: _json(getattr(article, f)) for f in ARTICLE_FIELDS}
     values["allergens"] = _allergen_map(article) if article.allergens_declared else None
     return values
 
@@ -71,8 +81,19 @@ def _check_code_free(code, exclude_id=None):
         raise ValidationError({"code": [f"Le code {code} existe déjà."]})
 
 
+def check_yield_range(minimum, maximum):
+    """Fourchette de rendement attendu : les deux bornes ou aucune, 0 < min <= max <= 100."""
+    if minimum is None and maximum is None:
+        return
+    if minimum is None or maximum is None:
+        raise ValidationError({"yield_min_pct": ["Saisissez les deux bornes du rendement attendu, ou aucune."]})
+    if not (0 < minimum <= maximum <= 100):
+        raise ValidationError({"yield_min_pct": ["Rendement attendu : 0 < minimum ≤ maximum ≤ 100 %."]})
+
+
 @transaction.atomic
 def create_article(*, tenant_id, user, allergens=None, audit_action="create", **fields):
+    check_yield_range(fields.get("yield_min_pct"), fields.get("yield_max_pct"))
     allergens = check_allergen_declaration(article_type=fields.get("article_type"), allergens=allergens)
     _check_code_free(fields["code"])
     article = Article.objects.create(tenant_id=tenant_id, allergens_declared=allergens is not None, **fields)
@@ -96,6 +117,8 @@ def update_article(*, tenant_id, user, article, allergens=None, **changes):
     if "code" in changes:
         _check_code_free(changes["code"], exclude_id=article.pk)
 
+    check_yield_range(changes.get("yield_min_pct", article.yield_min_pct),
+                      changes.get("yield_max_pct", article.yield_max_pct))
     old = article_snapshot(article)
     new_type = changes.get("article_type", article.article_type)
     if allergens is not None:
@@ -206,3 +229,53 @@ def import_partners(*, tenant_id, user, rows):
     created = [create_partner(tenant_id=tenant_id, user=user, audit_action="import", **row) for row in rows]
     publish_event(tenant_id=tenant_id, event_type="partners.imported", payload={"count": len(created)})
     return created
+
+
+# Parcelles -------------------------------------------------------------------
+
+
+def parcel_snapshot(parcel):
+    values = {f: _json(getattr(parcel, f)) for f in PARCEL_FIELDS}
+    values["producer_id"] = str(parcel.producer_id)
+    return values
+
+
+def _check_parcel(*, code, producer, exclude_id=None):
+    if not producer.is_supplier:
+        raise ValidationError({"producer": ["Une parcelle appartient à un fournisseur (producteur ou groupement)."]})
+    qs = Parcel.objects.filter(code__iexact=code)
+    if exclude_id:
+        qs = qs.exclude(pk=exclude_id)
+    if qs.exists():
+        raise ValidationError({"code": [f"La parcelle {code} existe déjà."]})
+
+
+@transaction.atomic
+def create_parcel(*, tenant_id, user, producer, code, organic_status, locality="", area_ha=None, is_active=True):
+    code = code.strip()
+    _check_parcel(code=code, producer=producer)
+    parcel = Parcel.objects.create(
+        tenant_id=tenant_id, producer=producer, code=code, organic_status=organic_status, locality=locality,
+        area_ha=area_ha, is_active=is_active,
+    )
+    record_audit(tenant_id=tenant_id, user=user, action="create", entity=parcel, new_values=parcel_snapshot(parcel))
+    publish_event(tenant_id=tenant_id, event_type="parcel.created", payload={"parcel_id": str(parcel.id)})
+    return parcel
+
+
+@transaction.atomic
+def update_parcel(*, tenant_id, user, parcel, **changes):
+    """Modifie une parcelle (ex. passage de « en conversion » a « bio »). Les lots deja recus gardent leur statut."""
+    old = parcel_snapshot(parcel)
+    if "code" in changes:
+        changes["code"] = changes["code"].strip()
+    _check_parcel(code=changes.get("code", parcel.code), producer=changes.get("producer", parcel.producer),
+                  exclude_id=parcel.pk)
+    for field, value in changes.items():
+        setattr(parcel, field, value)
+    parcel.save()
+    new = parcel_snapshot(parcel)
+    if new != old:
+        record_audit(tenant_id=tenant_id, user=user, action="update", entity=parcel, old_values=old, new_values=new)
+        publish_event(tenant_id=tenant_id, event_type="parcel.updated", payload={"parcel_id": str(parcel.id)})
+    return parcel

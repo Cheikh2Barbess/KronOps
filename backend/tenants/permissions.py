@@ -109,3 +109,43 @@ class UserCardPermission(BasePermission):
         if request.method in SAFE_METHODS:
             return has_role(request.user, *RESPONSABLES)
         return has_role(request.user, R.ADMIN)
+
+
+class ProductionPermission(BasePermission):
+    """Declaration d'etape (au poste) : Admin, Production, Operateur. Lecture : tous sauf aucun."""
+
+    message = "Votre rôle ne permet pas de déclarer une étape de production."
+
+    def has_permission(self, request, view):
+        if request.method in SAFE_METHODS:
+            return has_role(request.user, *R.values)
+        return has_role(request.user, R.ADMIN, R.PRODUCTION, R.OPERATEUR)
+
+
+class MaterialBalancePermission(BasePermission):
+    message = "Le bilan matière n'est pas ouvert à votre rôle."
+
+    def has_permission(self, request, view):
+        return has_role(request.user, R.ADMIN, R.QUALITE, R.PRODUCTION, R.LECTURE)
+
+
+class QualityCheckPermission(BasePermission):
+    """Controle qualite : saisi par la Qualite (ou l'Admin)."""
+
+    message = "Seuls les rôles Admin et Qualité enregistrent un contrôle qualité."
+
+    def has_permission(self, request, view):
+        if request.method in SAFE_METHODS:
+            return has_role(request.user, *R.values)
+        return has_role(request.user, R.ADMIN, R.QUALITE)
+
+
+class ShippingPermission(BasePermission):
+    """Expeditions : saisie Admin et Production, lecture Admin, Qualite, Production, Lecture."""
+
+    message = "Votre rôle ne permet pas cette action sur les expéditions."
+
+    def has_permission(self, request, view):
+        if request.method in SAFE_METHODS:
+            return has_role(request.user, R.ADMIN, R.QUALITE, R.PRODUCTION, R.LECTURE)
+        return has_role(request.user, R.ADMIN, R.PRODUCTION)

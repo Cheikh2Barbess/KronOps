@@ -28,6 +28,14 @@ class Allergen(UUIDModel):
         return self.name
 
 
+class OrganicStatus(models.TextChoices):
+    """Statut bio d'une parcelle ou d'un lot (reglement (UE) 2018/848 : bio, en conversion, non bio)."""
+
+    BIO = "bio", "Bio"
+    CONVERSION = "conversion", "En conversion"
+    CONVENTIONNEL = "conventionnel", "Conventionnel (non bio)"
+
+
 class Article(TenantModel):
     """Matiere, emballage, semi-fini ou produit fini.
 
@@ -60,10 +68,23 @@ class Article(TenantModel):
     storage = models.CharField("conservation", max_length=20, choices=Storage.choices, blank=True)
     allergens_declared = models.BooleanField("allergènes déclarés", default=False)
     is_active = models.BooleanField("actif", default=True)
+    # Rendement attendu quand cet article est PRODUIT : kg obtenus pour 100 kg de matiere consommee.
+    # Sert au bilan matiere : une declaration hors fourchette est signalee (pas bloquee).
+    yield_min_pct = models.DecimalField(
+        "rendement attendu minimum (%)", max_digits=5, decimal_places=2, null=True, blank=True
+    )
+    yield_max_pct = models.DecimalField(
+        "rendement attendu maximum (%)", max_digits=5, decimal_places=2, null=True, blank=True
+    )
 
     class Meta:
         verbose_name = "article"
         constraints = [
+            models.CheckConstraint(
+                condition=(Q(yield_min_pct__isnull=True) & Q(yield_max_pct__isnull=True))
+                | (Q(yield_min_pct__gt=0) & Q(yield_max_pct__lte=100) & Q(yield_min_pct__lte=F("yield_max_pct"))),
+                name="article_yield_range_valid",
+            ),
             models.UniqueConstraint(fields=["tenant", "code"], name="article_unique_code_per_tenant"),
             models.CheckConstraint(
                 condition=Q(shelf_life_days__isnull=True) | Q(shelf_life_days__gte=1),
@@ -144,3 +165,28 @@ class Partner(TenantModel):
 
     def __str__(self):
         return self.name
+
+
+class Parcel(TenantModel):
+    """Parcelle d'un producteur (fournisseur). Porte le statut bio, recopie sur le lot a la reception.
+
+    Le lot garde le statut du jour de la reception : changer la parcelle plus tard ne reecrit pas l'historique.
+    """
+
+    producer = models.ForeignKey(Partner, on_delete=models.PROTECT, related_name="parcels")
+    code = models.CharField("code parcelle", max_length=50)
+    locality = models.CharField("localité", max_length=100, blank=True, default="")
+    area_ha = models.DecimalField("surface (ha)", max_digits=8, decimal_places=2, null=True, blank=True)
+    organic_status = models.CharField("statut bio", max_length=20, choices=OrganicStatus.choices)
+    is_active = models.BooleanField("active", default=True)
+
+    class Meta:
+        verbose_name = "parcelle"
+        constraints = [
+            models.UniqueConstraint("tenant", Lower("code"), name="parcel_unique_code_per_tenant"),
+            models.CheckConstraint(condition=Q(area_ha__isnull=True) | Q(area_ha__gt=0), name="parcel_area_positive"),
+        ]
+        indexes = [models.Index(fields=["tenant", "producer"])]
+
+    def __str__(self):
+        return self.code

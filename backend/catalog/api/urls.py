@@ -12,4 +12,6 @@ urlpatterns = [
     path("partners/cities/", views.PartnerCityListView.as_view(), name="partner-cities"),
     path("partners/import/", views.PartnerImportView.as_view(), name="partner-import"),
     path("partners/<uuid:pk>/", views.PartnerDetailView.as_view(), name="partner-detail"),
+    path("parcels/", views.ParcelListView.as_view(), name="parcel-list"),
+    path("parcels/<uuid:pk>/", views.ParcelDetailView.as_view(), name="parcel-detail"),
 ]

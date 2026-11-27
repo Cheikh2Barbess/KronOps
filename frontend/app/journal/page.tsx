@@ -47,6 +47,11 @@ const ENTITY_TYPES: Record<string, string> = {
   "lots.movement": "Mouvements",
   "lots.approvalrequest": "Demandes de double validation",
   "lots.lotlink": "Liens entre lots",
+  "lots.qualitycheck": "Contrôles qualité",
+  "catalog.parcel": "Parcelles",
+  "production.equipment": "Équipements",
+  "production.productionrun": "Étapes de production",
+  "shipping.shipment": "Expéditions",
   "tenants.user": "Utilisateurs",
 };
 // Nom de l'objet au singulier, en tete de la colonne « Objet ».
@@ -59,6 +64,11 @@ const ENTITY_ONE: Record<string, string> = {
   "lots.movement": "Mouvement",
   "lots.approvalrequest": "Demande",
   "lots.lotlink": "Lien entre lots",
+  "lots.qualitycheck": "Contrôle qualité",
+  "catalog.parcel": "Parcelle",
+  "production.equipment": "Équipement",
+  "production.productionrun": "Étape de production",
+  "shipping.shipment": "Expédition",
   "tenants.user": "Utilisateur",
 };
 
@@ -114,6 +124,34 @@ const FIELDS: Record<string, string> = {
   job_title_other: "précision du poste",
   manager: "supérieur",
   password: "mot de passe",
+  organic_status: "statut bio",
+  parcel_id: "parcelle",
+  site_id: "site",
+  producer_id: "producteur",
+  locality: "localité",
+  area_ha: "surface (ha)",
+  yield_min_pct: "rendement minimum (%)",
+  yield_max_pct: "rendement maximum (%)",
+  equipment_type: "type d'équipement",
+  equipment_id: "équipement",
+  step: "étape",
+  output_lot_id: "lot produit",
+  input_quantity: "matière consommée",
+  output_quantity: "quantité produite",
+  waste_quantity: "déchets",
+  waste_code: "nature des déchets",
+  started_at: "début",
+  ended_at: "fin",
+  late_reason_code: "motif de saisie tardive",
+  result: "résultat",
+  checks: "critères",
+  moisture_pct: "humidité (%)",
+  customer_id: "client",
+  shipped_at: "départ",
+  container_number: "conteneur",
+  seal_number: "plomb",
+  export_document_ref: "certificat d'inspection",
+  bill_of_lading: "connaissement",
 };
 // Valeurs codees traduites, par champ.
 const VALUES: Record<string, Record<string, string>> = {
@@ -127,6 +165,16 @@ const VALUES: Record<string, Record<string, string>> = {
     expedition: "expédition", rebut: "rebut", ajustement: "ajustement", destruction: "destruction", annulation: "annulation",
   },
   date_type: { dlc: "DLC", ddm: "DDM" },
+  organic_status: { bio: "bio", conversion: "en conversion", conventionnel: "conventionnel" },
+  result: { conforme: "conforme", non_conforme: "non conforme" },
+  step: {
+    murissement: "mûrissement", tri: "tri", preparation: "préparation", sechage: "séchage",
+    conditionnement: "conditionnement", palettisation: "palettisation",
+  },
+  late_reason_code: {
+    ressaisie_papier: "ressaisie d'une fiche papier", tablette_indisponible: "tablette ou réseau indisponible",
+    oubli: "oubli de saisie", correction_controle: "correction après un contrôle", autre: "autre",
+  },
   base_unit: { kg: "kg", l: "L", unite: "unité" },
   article_type: { matiere: "matière première", emballage: "emballage", semi_fini: "semi-fini", fini: "produit fini" },
   storage: { ambiant: "ambiant", refrigere: "réfrigéré", congele: "congelé" },
@@ -160,10 +208,17 @@ function show(field: string, value: unknown, ctx: Ctx): string {
       ? present.map(([k, v]) => `${ctx.allergens[k] || k} : ${PRESENCE[String(v)] || String(v)}`).join(", ")
       : "aucun";
   }
+  if (field === "checks" && typeof value === "object") {
+    const rows = Object.entries(value as Record<string, unknown>);
+    const bad = rows.filter(([, v]) => v === "nok").map(([k]) => k.replace(/_/g, " "));
+    return bad.length ? `${rows.length} critères, non conformes : ${bad.join(", ")}` : `${rows.length} critères conformes`;
+  }
   const text = String(value);
   if (field.endsWith("_id")) return ctx.entry.refs[text] || "(objet introuvable)";
   if (VALUES[field]) return VALUES[field][text] || text;
   if (field === "job_title") return ctx.jobs[text] || text;
+  if (["input_quantity", "output_quantity", "waste_quantity"].includes(field)) return `${num(text)} ${unitName(ctx.entry.unit, text)}`.trim();
+  if (["started_at", "ended_at", "shipped_at"].includes(field)) return stamp(text);
   if (["reason_code", "decision_code", "block_code"].includes(field)) return ctx.codes[text] || text;
   if (field === "quantity") return `${num(text)} ${unitName(ctx.entry.unit, text)}`.trim();
   if (field === "factor") return `${num(text)} ${unitName(ctx.entry.unit, text)}`.trim();

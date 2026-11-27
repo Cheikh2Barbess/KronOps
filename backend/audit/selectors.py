@@ -75,6 +75,25 @@ def describe(entries):
         units[str(r.pk)] = r.lot.article.base_unit
     for link in LotLink.objects.filter(pk__in=ids).select_related("parent_lot", "child_lot"):
         names[str(link.pk)] = f"{link.parent_lot.code} → {link.child_lot.code}"
+    Parcel = apps.get_model("catalog", "Parcel")
+    Check = apps.get_model("lots", "QualityCheck")
+    Equipment = apps.get_model("production", "Equipment")
+    Run = apps.get_model("production", "ProductionRun")
+    Shipment = apps.get_model("shipping", "Shipment")
+    for parcel in Parcel.objects.filter(pk__in=ids).select_related("producer"):
+        names[str(parcel.pk)] = f"{parcel.code} · {parcel.producer.name}"
+    for check in Check.objects.filter(pk__in=ids).select_related("lot__article"):
+        names[str(check.pk)] = f"Contrôle · {check.lot.code}"
+        units[str(check.pk)] = check.lot.article.base_unit
+    for equipment in Equipment.objects.filter(pk__in=ids):
+        names[str(equipment.pk)] = f"{equipment.code} {equipment.name}"
+    for run in Run.objects.filter(pk__in=ids).select_related("output_lot__article"):
+        names[str(run.pk)] = f"{run.get_step_display()} · {run.output_lot.code}"
+        units[str(run.pk)] = run.output_lot.article.base_unit
+    for shipment in Shipment.objects.filter(pk__in=ids).select_related("customer"):
+        names[str(shipment.pk)] = f"{shipment.customer.name}" + (
+            f" · {shipment.container_number}" if shipment.container_number else ""
+        )
     if entries:
         # Table des utilisateurs sans RLS : on passe par le selecteur, filtre par entreprise.
         from tenants.selectors import users_of_tenant

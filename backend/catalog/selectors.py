@@ -4,7 +4,7 @@ from django.db.models import Count, Exists, Min, OuterRef, Prefetch, Q
 from django.db.models.functions import Lower
 from django.http import Http404
 
-from catalog.models import Allergen, Article, ArticleAllergen, Partner, UnitConversion
+from catalog.models import Allergen, Article, ArticleAllergen, Parcel, Partner, UnitConversion
 
 # Liste d'allergenes utilisee en phase 1 pour toutes les entreprises.
 DEFAULT_REGULATION = "UE_1169_2011"
@@ -108,3 +108,25 @@ def partner_or_404(*, partner_id):
 def existing_partner_names(names):
     lowered = {n.lower() for n in names}
     return set(Partner.objects.annotate(lname=Lower("name")).filter(lname__in=lowered).values_list("lname", flat=True))
+
+
+def parcels(*, q=None, producer_id=None, organic_status=None, active=None):
+    qs = Parcel.objects.select_related("producer").order_by("code")
+    if q:
+        qs = qs.filter(
+            Q(code__unaccent__icontains=q) | Q(locality__unaccent__icontains=q) | Q(producer__name__unaccent__icontains=q)
+        )
+    if producer_id:
+        qs = qs.filter(producer_id=producer_id)
+    if organic_status:
+        qs = qs.filter(organic_status=organic_status)
+    if active is not None:
+        qs = qs.filter(is_active=active)
+    return qs
+
+
+def parcel_or_404(*, parcel_id):
+    parcel = parcels().filter(pk=parcel_id).first()
+    if parcel is None:
+        raise Http404
+    return parcel

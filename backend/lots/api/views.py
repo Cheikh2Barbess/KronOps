@@ -1,3 +1,5 @@
+import uuid
+
 from django.http import Http404
 from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework import status
@@ -5,12 +7,16 @@ from rest_framework.exceptions import ValidationError
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from catalog.models import Article, Partner
+from catalog.models import Article, OrganicStatus, Parcel, Partner
 from lots.models import Lot
 from core.api import TenantAPIView
 from lots import reasons, selectors, services
 from lots.api.serializers import (
     ApprovalCreateSerializer,
+    QualityCheckCreateSerializer,
+    QualityCheckSerializer,
+    RecallQuerySerializer,
+    RecallShipmentSerializer,
     ApprovalSerializer,
     ApprovalStatusFilterSerializer,
     BlockSerializer,
@@ -26,9 +32,10 @@ from lots.api.serializers import (
     TraceLotSerializer,
     TraceQuerySerializer,
 )
-from tenants.models import User
+from tenants.models import Site, User
 from tenants.permissions import (
-    ApprovalPermission, BlockLotPermission, LotPermission, ReceptionPermission, TraceabilityPermission,
+    ApprovalPermission, BlockLotPermission, LotPermission, QualityCheckPermission, ReceptionPermission,
+    TraceabilityPermission,
 )
 
 
@@ -75,6 +82,16 @@ class ReceptionView(TenantAPIView):
         supplier = Partner.objects.filter(pk=data.pop("supplier")).first()
         if article is None or supplier is None:
             raise ValidationError({"article" if article is None else "supplier": ["Introuvable."]})
+        site_id = data.pop("site", None)
+        if site_id:
+            data["site"] = Site.objects.filter(pk=site_id).first()
+            if data["site"] is None:
+                raise ValidationError({"site": ["Introuvable."]})
+        parcel_id = data.pop("parcel", None)
+        if parcel_id:
+            data["parcel"] = Parcel.objects.filter(pk=parcel_id).first()
+            if data["parcel"] is None:
+                raise ValidationError({"parcel": ["Introuvable."]})
         lot = services.receive_lot(tenant_id=request.user.tenant_id, user=request.user, article=article,
                                    supplier=supplier, **data)
         return Response(_detail(lot.id), status=status.HTTP_201_CREATED)
@@ -93,6 +110,9 @@ class ReceptionOptionsView(TenantAPIView):
             "suppliers": ReceptionSupplierSerializer(selectors.reception_suppliers(), many=True).data,
             "reception_reasons": reasons.as_options(reasons.RECEPTION),
             "reversal_reasons": reasons.as_options(reasons.REVERSAL),
+            "late_reasons": reasons.as_options(reasons.LATE_ENTRY),
+            "organic_statuses": [{"code": c, "label": label} for c, label in OrganicStatus.choices],
+            "sites": [{"id": str(site.id), "name": site.name} for site in Site.objects.order_by("name")],
         })
 
 
@@ -164,6 +184,80 @@ class UpstreamView(TenantAPIView):
         return Response({
             "origins": LotSerializer(origins, many=True).data,
             "lots": TraceLotSerializer(selectors.upstream(origins=origins), many=True).data,
+        })
+
+
+class RecallView(TenantAPIView):
+    """Rapport de rappel depuis un carton, une palette (code de lot) ou un conteneur."""
+
+    permission_classes = [IsAuthenticated, TraceabilityPermission]
+
+    @extend_schema(parameters=[RecallQuerySerializer], responses={200: dict})
+    def get(self, request):
+        query = RecallQuerySerializer(data=request.query_params)
+        query.is_valid(raise_exception=True)
+        origins, container = selectors.find_recall_origins(search=query.validated_data["search"].strip())
+        if not origins:
+            raise Http404
+        report = selectors.recall_report(origins=origins)
+        from production.api.serializers import RunSerializer
+
+        def lot_rows(found):
+            rows = TraceLotSerializer(found, many=True).data
+            for row in rows:
+                check = report["quality"].get(uuid.UUID(row["id"]))
+                row["last_quality_check"] = QualityCheckSerializer(check).data if check else None
+            return rows
+
+        roots = lot_rows(report["roots"])
+        for row in roots:
+            m = report["receptions"].get(uuid.UUID(row["id"]))
+            row["received_quantity"] = str(m.quantity) if m else None
+            row["received_at"] = m.occurred_at.isoformat() if m else None
+        shipments = RecallShipmentSerializer(report["shipments"], many=True).data
+        raw = [r for r in roots if r["article_type"] != "emballage"]
+        return Response({
+            "search": query.validated_data["search"],
+            "container": container,
+            "origins": lot_rows(report["origins"]),
+            "contents": lot_rows(report["contents"]),
+            "roots": roots,
+            "affected": lot_rows(report["affected"]),
+            "in_stock": lot_rows(report["in_stock"]),
+            "runs": RunSerializer(report["runs"], many=True).data,
+            "shipments": shipments,
+            "summary": {
+                "producers": len({r["supplier_name"] for r in raw if r["supplier_name"]}),
+                "parcels": len({r["parcel_code"] for r in raw if r["parcel_code"]}),
+                "affected_lots": len(report["affected"]),
+                "lots_in_stock": len(report["in_stock"]),
+                "customers": len({s["customer_name"] for s in shipments if s["customer_name"]}),
+                "containers": len({s["container_number"] for s in shipments if s["container_number"]}),
+            },
+        })
+
+
+class QualityCheckView(TenantAPIView):
+    permission_classes = [IsAuthenticated, QualityCheckPermission]
+
+    @extend_schema(request=QualityCheckCreateSerializer, responses={201: LotDetailSerializer})
+    def post(self, request, pk):
+        lot = selectors.lot_or_404(lot_id=pk)
+        serializer = QualityCheckCreateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        services.record_quality_check(tenant_id=request.user.tenant_id, user=request.user, lot_id=lot.id,
+                                      **serializer.validated_data)
+        return Response(_detail(pk), status=status.HTTP_201_CREATED)
+
+
+class QualityOptionsView(TenantAPIView):
+    permission_classes = [IsAuthenticated, QualityCheckPermission]
+
+    @extend_schema(responses={200: dict})
+    def get(self, request):
+        return Response({
+            "criteria": reasons.as_options(reasons.QUALITY_CRITERIA),
+            "late_reasons": reasons.as_options(reasons.LATE_ENTRY),
         })
 
 

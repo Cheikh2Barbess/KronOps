@@ -79,6 +79,28 @@ REJECT = {
     OTHER: "Autre (préciser)",
 }
 
+# Saisie faite apres coup. Proposition du 27/11/2026 : tolerance de 2 heures entre le geste et la saisie.
+LATE_ENTRY = {
+    "ressaisie_papier": "Ressaisie d'une fiche papier",
+    "tablette_indisponible": "Tablette ou réseau indisponible",
+    "oubli": "Oubli de saisie",
+    "correction_controle": "Correction après un contrôle",
+    OTHER: "Autre (préciser)",
+}
+
+# Controle qualite du produit (liste fermee de criteres, chacun conforme ou non conforme).
+QUALITY_CRITERIA = {
+    "humidite": "Humidité dans la spécification",
+    "aspect_couleur": "Aspect et couleur",
+    "odeur_gout": "Odeur et goût",
+    "corps_etrangers": "Absence de corps étrangers",
+    "nuisibles": "Absence d'insectes ou de moisissures",
+    "poids_net": "Poids net du colis",
+    "etiquetage": "Étiquetage du colis (lot, statut bio)",
+}
+QUALITY_BLOCK = "controle_qualite_non_conforme"
+BLOCK_AUTO[QUALITY_BLOCK] = "Contrôle qualité non conforme"
+
 ALL_APPROVAL_CODES = sorted({code for codes in APPROVAL.values() for code in codes})
 
 

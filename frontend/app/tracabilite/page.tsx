@@ -3,6 +3,7 @@
 // Recherche de tracabilite (US-14 aval, US-15 amont).
 // Aval : d'un lot fournisseur vers les lots produits et les clients livres. Amont : d'un lot fini vers les matieres.
 import { FormEvent, useState } from "react";
+import { OrganicBadge } from "@/components/Codes";
 import { api, ApiError } from "@/lib/api";
 
 const UNIT_LABEL: Record<string, string> = { kg: "kg", l: "L", unite: "unité(s)" };
@@ -20,6 +21,8 @@ type Lot = {
   status: string;
   balance: string;
   expired: boolean;
+  organic_status: string;
+  parcel_code: string | null;
   depth?: number;
 };
 type Shipment = {
@@ -45,7 +48,8 @@ function LotTable({ lots }: { lots: Lot[] }) {
           <th>Lot</th>
           <th>Article</th>
           <th>Fournisseur</th>
-          <th>Lot fournisseur</th>
+          <th>Parcelle ou lot fournisseur</th>
+          <th>Bio</th>
           <th>DLC / DDM</th>
           <th>Statut</th>
           <th>En stock</th>
@@ -59,7 +63,10 @@ function LotTable({ lots }: { lots: Lot[] }) {
               {l.article_code} {l.article_name}
             </td>
             <td>{l.supplier_name || ""}</td>
-            <td>{l.supplier_lot_code}</td>
+            <td>{[l.parcel_code, l.supplier_lot_code].filter(Boolean).join(" · ")}</td>
+            <td>
+              <OrganicBadge status={l.organic_status} />
+            </td>
             <td>
               {l.expiry_date ? `${l.date_type.toUpperCase()} ${new Date(l.expiry_date).toLocaleDateString("fr-FR")}` : ""}
               {l.expired ? " (périmé)" : ""}
@@ -105,6 +112,10 @@ export default function Tracabilite() {
         <a href="/">Accueil</a>
       </p>
       <h1>Traçabilité</h1>
+      <p>
+        Pour un rappel complet et imprimable (parcelles, étapes, stock à bloquer, conteneurs), utilisez le{" "}
+        <a href="/rappel">rapport de rappel</a>.
+      </p>
       <form onSubmit={onSearch} style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
         <input name="search" placeholder="Code lot interne ou n° de lot fournisseur" required style={{ minWidth: 300 }} />
         <label>
