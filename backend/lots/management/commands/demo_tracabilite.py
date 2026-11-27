@@ -82,11 +82,11 @@ class Command(BaseCommand):
         later = datetime.date.today() + datetime.timedelta(days=180)
         f1 = services.receive_lot(
             tenant_id=t, user=user, article=flour, supplier=mill, supplier_lot_code="DEMO-MOULIN-001",
-            quantity=Decimal("20"), unit="sac", date_type="ddm", expiry_date=later,
+            quantity=Decimal("20"), unit="sac", date_type="ddm", expiry_date=later, organic_status="conventionnel",
         )
         b1 = services.receive_lot(
             tenant_id=t, user=user, article=butter, supplier=dairy, supplier_lot_code="DEMO-LAIT-042",
-            quantity=Decimal("40"), unit="kg", date_type="dlc", expiry_date=later, temperature_c=Decimal("3.5"),
+            quantity=Decimal("40"), unit="kg", date_type="dlc", expiry_date=later, temperature_c=Decimal("3.5"), organic_status="conventionnel",
         )
         p1 = services.create_lot(
             tenant_id=t, user=user, article=biscuit, quantity=Decimal("1200"), entry_type="production",

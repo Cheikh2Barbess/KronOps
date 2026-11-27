@@ -4,12 +4,12 @@ from decimal import Decimal
 
 from django.db import connection
 from django.db.models import (
-    BooleanField, Case, Count, DecimalField, Exists, IntegerField, OuterRef, Q, Subquery, Sum, Value, When,
+    BooleanField, Case, Count, DecimalField, Exists, IntegerField, OuterRef, Prefetch, Q, Subquery, Sum, Value, When,
 )
 from django.db.models.functions import Coalesce
 from django.http import Http404
 
-from catalog.models import Article, Partner
+from catalog.models import Article, Parcel, Partner
 from lots.models import ApprovalRequest, Lot, LotLink, Movement
 from tenants.models import User
 
@@ -20,7 +20,7 @@ MAX_DEPTH = 20
 
 def lots(*, article_id=None, status=None, search=None):
     qs = (
-        Lot.objects.select_related("article", "supplier")
+        Lot.objects.select_related("article", "supplier", "parcel", "site")
         .annotate(balance=Coalesce(Sum("movements__quantity"), ZERO))
         .order_by("-created_at")
     )
@@ -130,7 +130,12 @@ def reception_articles():
 
 
 def reception_suppliers():
-    return Partner.objects.filter(is_supplier=True, is_active=True).order_by("name")
+    active = Parcel.objects.filter(is_active=True).order_by("code")
+    return (
+        Partner.objects.filter(is_supplier=True, is_active=True)
+        .prefetch_related(Prefetch("parcels", queryset=active, to_attr="active_parcels"))
+        .order_by("name")
+    )
 
 
 def recent_receptions(*, user, limit=50):
@@ -146,7 +151,7 @@ def recent_receptions(*, user, limit=50):
     reversal = Movement.objects.filter(reverses=OuterRef("pk"))
     qs = (
         Movement.objects.filter(movement_type=Movement.Type.RECEPTION)
-        .select_related("lot__article", "partner", "user")
+        .select_related("lot__article", "lot__parcel", "partner", "user")
         .annotate(
             other_movements=Coalesce(Subquery(others, output_field=IntegerField()), 0),
             reversed=Exists(reversal),
@@ -163,3 +168,81 @@ def recent_receptions(*, user, limit=50):
     if user.role == User.Role.OPERATEUR:
         qs = qs.filter(user=user)
     return qs[:limit]
+
+
+# Rapport de rappel ------------------------------------------------------------
+
+
+def find_recall_origins(*, search):
+    """Point de depart d'un rappel : un code de lot (carton, palette), un n° de lot fournisseur, ou un n° de
+    conteneur (tous les lots charges dedans)."""
+    from shipping.models import ShipmentLine
+    from shipping.services import normalize_container
+
+    found = find_origin_lots(search=search)
+    if found:
+        return found, None
+    container = normalize_container(search)
+    lot_ids = list(
+        ShipmentLine.objects.filter(shipment__container_number=container).values_list("lot_id", flat=True)
+    ) if container else []
+    return list(lots().filter(pk__in=lot_ids)), (container if lot_ids else None)
+
+
+def last_quality_checks(lot_ids):
+    from lots.models import QualityCheck
+
+    latest = {}
+    for check in QualityCheck.objects.filter(lot_id__in=lot_ids).order_by("lot_id", "-checked_at", "-created_at"):
+        latest.setdefault(check.lot_id, check)
+    return latest
+
+
+def recall_report(*, origins):
+    """Rappel depuis un carton, une palette ou un conteneur.
+
+    1. Contenu : de quoi sont faits les lots de depart (remontee jusqu'aux receptions, parcelles, producteurs).
+    2. Perimetre : tout ce qui a ete fabrique avec les memes matieres d'origine (le rappel prudent).
+    3. Ou c'est : stock a bloquer, et expeditions (client, conteneur, document d'export).
+    """
+    from production.selectors import runs_using_lots
+    from shipping.models import ShipmentLine
+
+    contents = upstream(origins=origins)
+    known = {lot.id: lot for lot in [*origins, *contents]}
+    with_parents = set(LotLink.objects.filter(child_lot_id__in=known.keys()).values_list("child_lot_id", flat=True))
+    roots = [lot for lot in known.values() if lot.id not in with_parents]
+    # Les emballages restent dans le contenu, mais n'elargissent pas le perimetre (un lot de cartons vides
+    # touche toutes les productions de la saison).
+    scope = [lot for lot in roots if lot.article.article_type != Article.Type.EMBALLAGE]
+    derived, _ = downstream(origins=scope)
+    affected = {lot.id: lot for lot in [*scope, *derived]}
+    for lot in [*origins, *contents]:
+        affected.setdefault(lot.id, lot)
+    ids = list(affected.keys())
+
+    movements = (
+        Movement.objects.filter(lot_id__in=ids, movement_type=Movement.Type.EXPEDITION, reversed_by__isnull=True)
+        .select_related("lot__article", "partner").order_by("occurred_at")
+    )
+    lines = {
+        line.movement_id: line.shipment
+        for line in ShipmentLine.objects.filter(movement__in=movements).select_related("shipment")
+    }
+    shipments = [(m, lines.get(m.id)) for m in movements]
+    receptions = {
+        m.lot_id: m for m in Movement.objects.filter(lot_id__in=[r.id for r in roots],
+                                                     movement_type=Movement.Type.RECEPTION)
+    }
+    in_stock = [lot for lot in affected.values() if lot.balance > 0 and lot.status != Lot.Status.DETRUIT]
+    return {
+        "origins": origins,
+        "contents": sorted(contents, key=lambda lot: (lot.depth, lot.code)),
+        "roots": sorted(roots, key=lambda lot: lot.code),
+        "receptions": receptions,
+        "affected": sorted(affected.values(), key=lambda lot: lot.code),
+        "in_stock": sorted(in_stock, key=lambda lot: lot.code),
+        "runs": sorted(runs_using_lots(ids), key=lambda r: r.ended_at),
+        "shipments": shipments,
+        "quality": last_quality_checks(ids),
+    }

@@ -1,0 +1,161 @@
+from django.db.models import Prefetch
+from drf_spectacular.utils import extend_schema
+from rest_framework import status
+from rest_framework.exceptions import ValidationError
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
+
+from catalog.models import Article, UnitConversion
+from core.api import TenantAPIView
+from lots import reasons as lot_reasons
+from lots.models import Lot
+from production import reasons, selectors, services
+from production.api.serializers import (
+    AvailableLotSerializer,
+    BalanceFilterSerializer,
+    EquipmentSerializer,
+    RunCreateSerializer,
+    RunSerializer,
+    StepTotalSerializer,
+)
+from production.models import Equipment, ProductionRun
+from tenants.models import Site
+from tenants.permissions import MaterialBalancePermission, ProductionPermission, ReferentialPermission
+
+
+def _site(site_id):
+    """Site designe par son identifiant : la RLS rend « introuvable » celui d'un autre client."""
+    if not site_id:
+        return None
+    site = Site.objects.filter(pk=site_id).first()
+    if site is None:
+        raise ValidationError({"site": ["Introuvable."]})
+    return site
+
+
+class EquipmentListView(TenantAPIView):
+    permission_classes = [IsAuthenticated, ReferentialPermission]
+
+    @extend_schema(responses={200: EquipmentSerializer(many=True)})
+    def get(self, request):
+        return Response(EquipmentSerializer(selectors.equipment_list(), many=True).data)
+
+    @extend_schema(request=EquipmentSerializer, responses={201: EquipmentSerializer})
+    def post(self, request):
+        serializer = EquipmentSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = dict(serializer.validated_data)
+        data["site"] = _site(data.pop("site_id", None))
+        equipment = services.create_equipment(tenant_id=request.user.tenant_id, user=request.user, **data)
+        return Response(EquipmentSerializer(equipment).data, status=status.HTTP_201_CREATED)
+
+
+class EquipmentDetailView(TenantAPIView):
+    permission_classes = [IsAuthenticated, ReferentialPermission]
+
+    @extend_schema(responses={200: EquipmentSerializer})
+    def get(self, request, pk):
+        return Response(EquipmentSerializer(selectors.equipment_or_404(equipment_id=pk)).data)
+
+    @extend_schema(request=EquipmentSerializer, responses={200: EquipmentSerializer})
+    def patch(self, request, pk):
+        equipment = selectors.equipment_or_404(equipment_id=pk)
+        serializer = EquipmentSerializer(equipment, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        data = dict(serializer.validated_data)
+        if "site_id" in data:
+            data["site"] = _site(data.pop("site_id"))
+        equipment = services.update_equipment(tenant_id=request.user.tenant_id, user=request.user,
+                                              equipment=equipment, **data)
+        return Response(EquipmentSerializer(equipment).data)
+
+
+class RunListView(TenantAPIView):
+    permission_classes = [IsAuthenticated, ProductionPermission]
+
+    @extend_schema(responses={200: RunSerializer(many=True)})
+    def get(self, request):
+        """Dernieres declarations (100)."""
+        found = [selectors.decorate(r) for r in selectors.runs()[:100]]
+        return Response(RunSerializer(found, many=True).data)
+
+    @extend_schema(request=RunCreateSerializer, responses={201: RunSerializer})
+    def post(self, request):
+        serializer = RunCreateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = dict(serializer.validated_data)
+        article = Article.objects.filter(pk=data.pop("output_article")).first()
+        if article is None:
+            raise ValidationError({"output_article": ["Introuvable."]})
+        equipment_id = data.pop("equipment", None)
+        equipment = Equipment.objects.filter(pk=equipment_id).first() if equipment_id else None
+        if equipment_id and equipment is None:
+            raise ValidationError({"equipment": ["Introuvable."]})
+        rows = data.pop("inputs")
+        found = {lot.id: lot for lot in Lot.objects.select_related("article").filter(pk__in=[r["lot"] for r in rows])}
+        if len(found) != len({r["lot"] for r in rows}):
+            raise ValidationError({"inputs": ["Lot introuvable."]})
+        run = services.declare_run(
+            tenant_id=request.user.tenant_id, user=request.user, output_article=article, equipment=equipment,
+            site=_site(data.pop("site", None)), inputs=[(found[r["lot"]], r["quantity"]) for r in rows],
+            output_unit=data.pop("output_unit") or None, **data,
+        )
+        return Response(RunSerializer(selectors.decorate(selectors.run_or_404(run_id=run.id))).data,
+                        status=status.HTTP_201_CREATED)
+
+
+class RunDetailView(TenantAPIView):
+    permission_classes = [IsAuthenticated, ProductionPermission]
+
+    @extend_schema(responses={200: RunSerializer})
+    def get(self, request, pk):
+        return Response(RunSerializer(selectors.decorate(selectors.run_or_404(run_id=pk))).data)
+
+
+class ProductionOptionsView(TenantAPIView):
+    """Listes de l'ecran « Déclarer une étape » : etapes, equipements, lots disponibles, articles produits."""
+
+    permission_classes = [IsAuthenticated, ProductionPermission]
+
+    @extend_schema(responses={200: dict})
+    def get(self, request):
+        articles = (
+            Article.objects.filter(is_active=True).exclude(article_type=Article.Type.EMBALLAGE)
+            .prefetch_related(Prefetch("conversions", queryset=UnitConversion.objects.order_by("unit_name")))
+            .order_by("article_type", "code")
+        )
+        return Response({
+            "steps": [{"code": c, "label": label} for c, label in ProductionRun.Step.choices],
+            "equipment": EquipmentSerializer(selectors.equipment_list(active=True), many=True).data,
+            "sites": [{"id": str(s.id), "name": s.name} for s in Site.objects.order_by("name")],
+            "lots": AvailableLotSerializer(selectors.production_options(), many=True).data,
+            "output_articles": [
+                {"id": str(a.id), "code": a.code, "name": a.name, "article_type": a.article_type,
+                 "base_unit": a.base_unit, "yield_min_pct": a.yield_min_pct, "yield_max_pct": a.yield_max_pct,
+                 "conversions": [{"unit_name": c.unit_name, "factor": c.factor} for c in a.conversions.all()]}
+                for a in articles
+            ],
+            "waste_reasons": lot_reasons.as_options(reasons.WASTE),
+            "late_reasons": lot_reasons.as_options(lot_reasons.LATE_ENTRY),
+        })
+
+
+class MaterialBalanceView(TenantAPIView):
+    """Bilan matiere : rendement de chaque declaration, ecarts signales, total par etape."""
+
+    permission_classes = [IsAuthenticated, MaterialBalancePermission]
+
+    @extend_schema(parameters=[BalanceFilterSerializer], responses={200: dict})
+    def get(self, request):
+        query = BalanceFilterSerializer(data=request.query_params)
+        query.is_valid(raise_exception=True)
+        f = query.validated_data
+        found, totals = selectors.material_balance(
+            date_from=f.get("date_from"), date_to=f.get("date_to"), step=f.get("step"), site_id=f.get("site"),
+        )
+        return Response({
+            "runs": RunSerializer(found, many=True).data,
+            "totals": StepTotalSerializer(totals, many=True).data,
+            "steps": [{"code": c, "label": label} for c, label in ProductionRun.Step.choices],
+            "sites": [{"id": str(s.id), "name": s.name} for s in Site.objects.order_by("name")],
+        })

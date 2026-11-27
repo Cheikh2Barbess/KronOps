@@ -29,11 +29,6 @@ def reader_client(tenant_a):
     return client_for(make_user(tenant_a, "lecture_a", role=User.Role.LECTURE))
 
 
-@pytest.fixture
-def client_b(admin_b):
-    return client_for(admin_b)
-
-
 def _absent():
     return {c: "absent" for c in allergen_codes()}
 
@@ -76,4 +71,5 @@ def reception_payload(ref_a):
         "date_type": "ddm",
         "expiry_date": "2027-06-30",
         "visual_ok": True,
+        "organic_status": "conventionnel",
     }

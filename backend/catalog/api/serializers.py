@@ -2,7 +2,7 @@
 
 from rest_framework import serializers
 
-from catalog.models import Allergen, Article, ArticleAllergen, Partner, UnitConversion
+from catalog.models import Allergen, Article, ArticleAllergen, OrganicStatus, Parcel, Partner, UnitConversion
 
 
 class AllergenSerializer(serializers.ModelSerializer):
@@ -21,7 +21,7 @@ class ArticleSerializer(serializers.ModelSerializer):
         model = Article
         fields = [
             "id", "code", "name", "article_type", "base_unit", "shelf_life_days", "storage",
-            "is_active", "allergens_declared", "allergens", "created_at", "updated_at",
+            "is_active", "allergens_declared", "allergens", "yield_min_pct", "yield_max_pct", "created_at", "updated_at",
         ]
         read_only_fields = ["id", "allergens_declared", "created_at", "updated_at"]
         # L'unicite du code est verifiee par le service (le tenant n'est pas dans la requete).
@@ -125,3 +125,25 @@ class PartnerFilterSerializer(serializers.Serializer):
 class CitySerializer(serializers.Serializer):
     city = serializers.CharField()
     count = serializers.IntegerField()
+
+
+class ParcelSerializer(serializers.ModelSerializer):
+    producer = serializers.UUIDField(source="producer_id")
+    producer_name = serializers.CharField(source="producer.name", read_only=True)
+    organic_status = serializers.ChoiceField(choices=OrganicStatus.choices)
+
+    class Meta:
+        model = Parcel
+        fields = [
+            "id", "producer", "producer_name", "code", "locality", "area_ha", "organic_status", "is_active",
+            "created_at", "updated_at",
+        ]
+        read_only_fields = ["id", "created_at", "updated_at"]
+        validators = []
+
+
+class ParcelFilterSerializer(serializers.Serializer):
+    q = serializers.CharField(required=False, allow_blank=True)
+    producer = serializers.UUIDField(required=False)
+    organic_status = serializers.ChoiceField(choices=OrganicStatus.choices, required=False)
+    active = serializers.BooleanField(required=False, allow_null=True, default=None)

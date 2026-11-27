@@ -2,6 +2,7 @@ from django.conf import settings
 from django.db import models
 from django.db.models import F, Q
 
+from catalog.models import OrganicStatus
 from core.models import TenantModel
 
 
@@ -37,6 +38,15 @@ class Lot(TenantModel):
         "température à réception (°C)", max_digits=5, decimal_places=1, null=True, blank=True
     )
     reception_visual_ok = models.BooleanField("conformité visuelle", null=True, blank=True)
+    # Vide pour un emballage (sans objet) et pour les lots crees avant le suivi bio.
+    organic_status = models.CharField(
+        "statut bio", max_length=20, choices=OrganicStatus.choices, blank=True, default=""
+    )
+    parcel = models.ForeignKey(
+        "catalog.Parcel", on_delete=models.PROTECT, null=True, blank=True, related_name="lots"
+    )
+    # Site (usine) ou se trouve le lot. Vide quand l'entreprise n'a declare aucun site.
+    site = models.ForeignKey("tenants.Site", on_delete=models.PROTECT, null=True, blank=True, related_name="lots")
 
     class Meta:
         verbose_name = "lot"
@@ -87,6 +97,9 @@ class Movement(TenantModel):
     reason_code = models.CharField("motif (code)", max_length=40, blank=True)
     occurred_at = models.DateTimeField("date réelle déclarée")
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, null=True, related_name="+")
+    # Saisie faite apres coup (date reelle bien avant l'heure du serveur) : motif code obligatoire.
+    late_reason_code = models.CharField("motif de saisie tardive (code)", max_length=40, blank=True)
+    late_comment = models.TextField("précision sur la saisie tardive", blank=True)
 
     class Meta:
         verbose_name = "mouvement"
@@ -176,3 +189,27 @@ class ApprovalRequest(TenantModel):
             ),
         ]
         indexes = [models.Index(fields=["tenant", "status", "created_at"])]
+
+
+class QualityCheck(TenantModel):
+    """Controle qualite d'un lot (produit fini ou vrac seche avant expedition). INSERTION SEULE.
+
+    Chaque critere est coche conforme ou non conforme (liste fermee, pas de texte libre). Un controle non
+    conforme bloque le lot dans la meme transaction.
+    """
+
+    class Result(models.TextChoices):
+        CONFORME = "conforme", "Conforme"
+        NON_CONFORME = "non_conforme", "Non conforme"
+
+    lot = models.ForeignKey(Lot, on_delete=models.PROTECT, related_name="quality_checks")
+    checks = models.JSONField("critères", help_text="{code_critère: \"ok\" | \"nok\"}")
+    moisture_pct = models.DecimalField("humidité mesurée (%)", max_digits=5, decimal_places=2, null=True, blank=True)
+    result = models.CharField("résultat", max_length=20, choices=Result.choices)
+    comment = models.TextField("précision", blank=True)
+    checked_at = models.DateTimeField("date du contrôle")
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, null=True, related_name="+")
+
+    class Meta:
+        verbose_name = "contrôle qualité"
+        indexes = [models.Index(fields=["tenant", "lot", "checked_at"])]

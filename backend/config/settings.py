@@ -46,6 +46,8 @@ INSTALLED_APPS = [
     "events",
     "catalog",
     "lots",
+    "production",
+    "shipping",
 ]
 
 MIDDLEWARE = [

@@ -1,5 +1,6 @@
 from drf_spectacular.utils import extend_schema
 from rest_framework import status
+from rest_framework.exceptions import ValidationError
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.parsers import MultiPartParser
 from rest_framework.permissions import IsAuthenticated
@@ -12,11 +13,14 @@ from catalog.api.serializers import (
     ArticleSerializer,
     CitySerializer,
     ImportFileSerializer,
+    ParcelFilterSerializer,
+    ParcelSerializer,
     PartnerFilterSerializer,
     PartnerSerializer,
     UnitConversionSerializer,
 )
 from core.api import TenantAPIView
+from catalog.models import Partner
 from tenants.permissions import ReferentialPermission
 
 
@@ -158,6 +162,51 @@ class PartnerImportView(ReferentialView):
     @extend_schema(request={"multipart/form-data": ImportFileSerializer}, responses={201: dict, 400: dict})
     def post(self, request):
         return _run_import(request, csv_import.parse_partners, services.import_partners)
+
+
+def _producer(data):
+    """Le producteur vient d'un identifiant : la RLS rend « introuvable » celui d'un autre client."""
+    producer_id = data.pop("producer_id", None)
+    if producer_id is None:
+        return {}
+    producer = Partner.objects.filter(pk=producer_id).first()
+    if producer is None:
+        raise ValidationError({"producer": ["Introuvable."]})
+    return {"producer": producer}
+
+
+class ParcelListView(ReferentialView):
+    @extend_schema(parameters=[ParcelFilterSerializer], responses={200: ParcelSerializer(many=True)})
+    def get(self, request):
+        data = _filters(request, ParcelFilterSerializer)
+        qs = selectors.parcels(q=data.get("q"), producer_id=data.get("producer"),
+                               organic_status=data.get("organic_status"), active=data.get("active"))
+        return _paginated(request, self, qs, ParcelSerializer)
+
+    @extend_schema(request=ParcelSerializer, responses={201: ParcelSerializer})
+    def post(self, request):
+        serializer = ParcelSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = dict(serializer.validated_data)
+        data.update(_producer(data))
+        parcel = services.create_parcel(tenant_id=request.user.tenant_id, user=request.user, **data)
+        return Response(ParcelSerializer(parcel).data, status=status.HTTP_201_CREATED)
+
+
+class ParcelDetailView(ReferentialView):
+    @extend_schema(responses={200: ParcelSerializer})
+    def get(self, request, pk):
+        return Response(ParcelSerializer(selectors.parcel_or_404(parcel_id=pk)).data)
+
+    @extend_schema(request=ParcelSerializer, responses={200: ParcelSerializer})
+    def patch(self, request, pk):
+        parcel = selectors.parcel_or_404(parcel_id=pk)
+        serializer = ParcelSerializer(parcel, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        data = dict(serializer.validated_data)
+        data.update(_producer(data))
+        parcel = services.update_parcel(tenant_id=request.user.tenant_id, user=request.user, parcel=parcel, **data)
+        return Response(ParcelSerializer(parcel).data)
 
 
 def _run_import(request, parse, save):

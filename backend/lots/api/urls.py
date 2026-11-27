@@ -17,4 +17,7 @@ urlpatterns = [
     path("approvals/<uuid:pk>/cancel/", views.CancelView.as_view(), name="approval-cancel"),
     path("traceability/downstream/", views.DownstreamView.as_view(), name="trace-downstream"),
     path("traceability/upstream/", views.UpstreamView.as_view(), name="trace-upstream"),
+    path("traceability/recall/", views.RecallView.as_view(), name="trace-recall"),
+    path("lots/quality-checks/options/", views.QualityOptionsView.as_view(), name="quality-options"),
+    path("lots/<uuid:pk>/quality-checks/", views.QualityCheckView.as_view(), name="lot-quality-check"),
 ]

@@ -20,7 +20,7 @@ def receive(tenant_a, admin_a, ref):
         return services.receive_lot(
             tenant_id=tenant_a.id, user=admin_a, article=ref["flour"], supplier=ref["supplier"],
             supplier_lot_code="F-1", quantity=Decimal("20"), unit="sac", date_type="ddm",
-            expiry_date=datetime.date(2027, 6, 30),
+            expiry_date=datetime.date(2027, 6, 30), organic_status="conventionnel",
         )
 
 

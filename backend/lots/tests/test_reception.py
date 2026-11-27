@@ -102,10 +102,12 @@ def test_conform_reception_ignores_the_reason(operator_client, reception_payload
 def test_paper_reentry_keeps_declared_date(operator_client, reception_payload):
     # Coupure reseau : ressaisie d'une fiche papier, avec la date reelle declaree.
     reception_payload["occurred_at"] = "2026-11-20T08:30:00Z"
+    reception_payload["late_reason_code"] = "ressaisie_papier"
     body = operator_client.post(URL, reception_payload, format="json").json()
     movement = body["movements"][0]
     assert movement["occurred_at"].startswith("2026-11-20")
     assert movement["created_at"] != movement["occurred_at"]
+    assert movement["late_reason_code"] == "ressaisie_papier"
 
 
 def test_reader_cannot_receive(reader_client, reception_payload):
