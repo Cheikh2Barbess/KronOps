@@ -215,6 +215,7 @@ class RecallView(TenantAPIView):
             row["received_quantity"] = str(m.quantity) if m else None
             row["received_at"] = m.occurred_at.isoformat() if m else None
         shipments = RecallShipmentSerializer(report["shipments"], many=True).data
+        raw = [r for r in roots if r["article_type"] != "emballage"]
         return Response({
             "search": query.validated_data["search"],
             "container": container,
@@ -226,8 +227,8 @@ class RecallView(TenantAPIView):
             "runs": RunSerializer(report["runs"], many=True).data,
             "shipments": shipments,
             "summary": {
-                "producers": len({r["supplier_name"] for r in roots if r["supplier_name"]}),
-                "parcels": len({r["parcel_code"] for r in roots if r["parcel_code"]}),
+                "producers": len({r["supplier_name"] for r in raw if r["supplier_name"]}),
+                "parcels": len({r["parcel_code"] for r in raw if r["parcel_code"]}),
                 "affected_lots": len(report["affected"]),
                 "lots_in_stock": len(report["in_stock"]),
                 "customers": len({s["customer_name"] for s in shipments if s["customer_name"]}),

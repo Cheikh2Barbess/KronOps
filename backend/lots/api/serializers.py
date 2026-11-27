@@ -115,6 +115,7 @@ class LotSerializer(serializers.ModelSerializer):
     article_code = serializers.CharField(source="article.code", read_only=True)
     article_name = serializers.CharField(source="article.name", read_only=True)
     base_unit = serializers.CharField(source="article.base_unit", read_only=True)
+    article_type = serializers.CharField(source="article.article_type", read_only=True)
     supplier_name = serializers.CharField(source="supplier.name", default=None, read_only=True)
     parcel_code = serializers.CharField(source="parcel.code", default=None, read_only=True)
     parcel_locality = serializers.CharField(source="parcel.locality", default=None, read_only=True)
@@ -129,7 +130,7 @@ class LotSerializer(serializers.ModelSerializer):
             "id", "code", "article", "article_code", "article_name", "base_unit", "supplier", "supplier_name",
             "supplier_lot_code", "date_type", "expiry_date", "production_date", "status", "block_code", "block_reason",
             "balance", "depleted", "expired", "reception_temperature_c", "reception_visual_ok", "created_at",
-            "organic_status", "parcel", "parcel_code", "parcel_locality", "site", "site_name",
+            "organic_status", "parcel", "parcel_code", "parcel_locality", "site", "site_name", "article_type",
         ]
 
     def get_depleted(self, obj):
