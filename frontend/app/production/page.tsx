@@ -35,6 +35,7 @@ type Lot = {
   site: string | null;
   site_name: string | null;
   balance: string;
+  route_steps: string[] | null;
 };
 type Conversion = { unit_name: string; factor: string };
 type OutArticle = {
@@ -46,6 +47,7 @@ type OutArticle = {
   yield_min_pct: string | null;
   yield_max_pct: string | null;
   conversions: Conversion[];
+  route_steps: string[] | null;
 };
 type Equipment = { id: string; code: string; name: string; equipment_type: string; site: string | null; site_name: string | null };
 type Options = {
@@ -82,6 +84,9 @@ function DeclareForm({ options, onDone }: { options: Options; onDone: (run: Run)
   const [error, setError] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
 
+  // Parcours par produit : un article ou un lot dont le parcours ne prevoit pas l'etape n'est pas propose.
+  const fits = (routeSteps: string[] | null) => !step || !routeSteps || routeSteps.includes(step);
+  const outputArticles = options.output_articles.filter((a) => fits(a.route_steps));
   const lotById = useMemo(() => Object.fromEntries(options.lots.map((l) => [l.id, l])), [options.lots]);
   const article = options.output_articles.find((a) => a.id === articleId);
   const equipment = options.equipment.filter((e) => !step || (STEP_EQUIPMENT[step] || []).includes(e.equipment_type) || e.equipment_type === "autre");
@@ -141,8 +146,10 @@ function DeclareForm({ options, onDone }: { options: Options; onDone: (run: Run)
   const needsSite = options.sites.length > 1 && !equipmentSite;
   // Un lot se consomme dans l'usine ou il se trouve : les autres sont caches (transfert d'abord).
   const workSite = equipmentSite || siteId || null;
-  const lotsHere = options.lots.filter((l) => !workSite || !l.site || l.site === workSite);
-  const hiddenElsewhere = options.lots.length - lotsHere.length;
+  const lotsOnRoute = options.lots.filter((l) => l.article_type === "emballage" || fits(l.route_steps));
+  const hiddenOffRoute = options.lots.length - lotsOnRoute.length;
+  const lotsHere = lotsOnRoute.filter((l) => !workSite || !l.site || l.site === workSite);
+  const hiddenElsewhere = lotsOnRoute.length - lotsHere.length;
   return (
     <form onSubmit={onSubmit} style={{ display: "grid", gap: 14, maxWidth: 860, border: "1px solid #888", padding: 12 }}>
       <div>
@@ -155,6 +162,8 @@ function DeclareForm({ options, onDone }: { options: Options; onDone: (run: Run)
               onClick={() => {
                 setStep(s.code);
                 setEquipmentId("");
+                setRows([{ lot: "", quantity: "" }]);
+                setArticleId("");
               }}
               style={{ ...big, background: step === s.code ? "#1b5e20" : undefined, color: step === s.code ? "white" : undefined }}
             >
@@ -244,6 +253,11 @@ function DeclareForm({ options, onDone }: { options: Options; onDone: (run: Run)
                 <a href="/transferts">transfert</a>.
               </p>
             )}
+            {hiddenOffRoute > 0 && (
+              <p style={{ color: "#555", margin: "6px 0 0" }}>
+                {hiddenOffRoute} lot(s) ne sont pas proposés : leur parcours ne prévoit pas cette étape.
+              </p>
+            )}
             {statuses.size > 1 && (
               <p role="alert" style={{ color: "#b00020" }}>
                 Mélange interdit : ces lots n&apos;ont pas le même statut bio ({[...statuses].map((s) => ORGANIC[s] || "non renseigné").join(", ")}).
@@ -257,12 +271,12 @@ function DeclareForm({ options, onDone }: { options: Options; onDone: (run: Run)
               value={articleId}
               onChange={(e) => {
                 setArticleId(e.target.value);
-                setOutUnit(options.output_articles.find((a) => a.id === e.target.value)?.base_unit || "");
+                setOutUnit(outputArticles.find((a) => a.id === e.target.value)?.base_unit || "");
               }}
               style={big}
             >
               <option value="">(choisir)</option>
-              {options.output_articles.map((a) => (
+              {outputArticles.map((a) => (
                 <option key={a.id} value={a.id}>
                   {a.code} {a.name}
                 </option>

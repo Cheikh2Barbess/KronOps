@@ -445,3 +445,186 @@ export function StepSection() {
     </section>
   );
 }
+
+type RouteRow = {
+  id: string;
+  name: string;
+  is_active: boolean;
+  steps: { code: string; label: string }[];
+  articles: { id: string; code: string; name: string }[];
+};
+type RouteArticleOption = { id: string; code: string; name: string };
+
+function RouteEditor({
+  route,
+  steps,
+  articles,
+  routes,
+  onDone,
+}: {
+  route: RouteRow | null;
+  steps: StepRow[];
+  articles: RouteArticleOption[];
+  routes: RouteRow[];
+  onDone: () => void;
+}) {
+  const [name, setName] = useState(route?.name || "");
+  const [active, setActive] = useState(route ? route.is_active : true);
+  const [chosenSteps, setChosenSteps] = useState<string[]>(route ? route.steps.map((s) => s.code) : []);
+  const [chosenArticles, setChosenArticles] = useState<string[]>(route ? route.articles.map((a) => a.id) : []);
+  const [error, setError] = useState<string | null>(null);
+  // Article deja rattache a un autre parcours : affiche mais non cochable.
+  const elsewhere: Record<string, string> = {};
+  routes.filter((r) => r.id !== route?.id).forEach((r) => r.articles.forEach((a) => (elsewhere[a.id] = r.name)));
+  const flip = (list: string[], value: string) => (list.includes(value) ? list.filter((v) => v !== value) : [...list, value]);
+
+  async function onSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setError(null);
+    const body = JSON.stringify({ name, is_active: active, steps: chosenSteps, articles: chosenArticles });
+    try {
+      if (route) await api(`production/routes/${route.id}/`, { method: "PUT", body });
+      else await api("production/routes/", { method: "POST", body });
+      onDone();
+    } catch (e) {
+      setError(errorText(e));
+    }
+  }
+
+  return (
+    <form onSubmit={onSubmit} style={box}>
+      <label>
+        Nom du parcours <input value={name} onChange={(e) => setName(e.target.value)} required maxLength={100} placeholder="Mangue séchée" />
+      </label>
+      {route && (
+        <label>
+          <input type="checkbox" checked={active} onChange={() => setActive(!active)} /> Parcours actif
+        </label>
+      )}
+      <fieldset>
+        <legend>Étapes permises (étapes actives de l&apos;entreprise)</legend>
+        {steps
+          .filter((s) => s.is_active)
+          .map((s) => (
+            <label key={s.code} style={{ display: "block" }}>
+              <input type="checkbox" checked={chosenSteps.includes(s.code)} onChange={() => setChosenSteps(flip(chosenSteps, s.code))} /> {s.label}
+            </label>
+          ))}
+      </fieldset>
+      <fieldset>
+        <legend>Articles qui suivent ce parcours</legend>
+        {articles.map((a) => (
+          <label key={a.id} style={{ display: "block", color: elsewhere[a.id] ? "#777" : undefined }}>
+            <input
+              type="checkbox"
+              checked={chosenArticles.includes(a.id)}
+              disabled={!!elsewhere[a.id]}
+              onChange={() => setChosenArticles(flip(chosenArticles, a.id))}
+            />{" "}
+            {a.code} {a.name}
+            {elsewhere[a.id] ? ` (déjà dans « ${elsewhere[a.id]} »)` : ""}
+          </label>
+        ))}
+      </fieldset>
+      <div>
+        <button type="submit">Enregistrer le parcours</button>{" "}
+        <button type="button" onClick={onDone}>
+          Annuler
+        </button>
+      </div>
+      {error && <p role="alert">{error}</p>}
+    </form>
+  );
+}
+
+// Parcours par produit : la mangue et la coco n'ont pas les memes etapes. Un article sans parcours suit les
+// etapes actives de l'entreprise. Seul l'Admin cree ou modifie un parcours (verifie par l'API).
+export function RouteSection() {
+  const [routes, setRoutes] = useState<RouteRow[]>([]);
+  const [steps, setSteps] = useState<StepRow[]>([]);
+  const [articles, setArticles] = useState<RouteArticleOption[]>([]);
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [editing, setEditing] = useState<RouteRow | "new" | null>(null);
+  const load = useCallback(() => {
+    api<RouteRow[]>("production/routes/").then(setRoutes).catch(() => setRoutes([]));
+    api<StepRow[]>("production/steps/").then(setSteps).catch(() => setSteps([]));
+  }, []);
+  useEffect(load, [load]);
+  useEffect(() => {
+    api<{ role: string }>("auth/me/")
+      .then((me) => {
+        const admin = me.role === "admin";
+        setIsAdmin(admin);
+        if (admin)
+          api<{ output_articles: RouteArticleOption[] }>("production/runs/options/")
+            .then((o) => setArticles(o.output_articles))
+            .catch(() => setArticles([]));
+      })
+      .catch(() => setIsAdmin(false));
+  }, []);
+
+  return (
+    <section>
+      <h2>Parcours par produit</h2>
+      <p style={{ color: "#555", maxWidth: 640 }}>
+        Un parcours dit quelles étapes un produit traverse (par exemple, la coco passe par le cassage, la mangue
+        non). À la déclaration, seuls les articles et les lots qui prévoient l&apos;étape choisie sont proposés. Un
+        article sans parcours suit toutes les étapes actives.
+      </p>
+      <table cellPadding={4} style={{ borderCollapse: "collapse" }}>
+        <thead>
+          <tr>
+            <th align="left">Parcours</th>
+            <th align="left">Étapes</th>
+            <th align="left">Articles</th>
+            <th />
+          </tr>
+        </thead>
+        <tbody>
+          {routes.map((r) => (
+            <tr key={r.id} style={{ borderTop: "1px solid #ddd", opacity: r.is_active ? 1 : 0.6 }}>
+              <td>
+                {r.name}
+                {!r.is_active && " (désactivé)"}
+              </td>
+              <td>{r.steps.map((s) => s.label).join(", ")}</td>
+              <td>{r.articles.map((a) => a.code).join(", ")}</td>
+              <td>
+                {isAdmin && (
+                  <button type="button" onClick={() => setEditing(r)}>
+                    Modifier
+                  </button>
+                )}
+              </td>
+            </tr>
+          ))}
+          {routes.length === 0 && (
+            <tr>
+              <td colSpan={4}>Aucun parcours : tous les articles suivent les étapes actives de l&apos;entreprise.</td>
+            </tr>
+          )}
+        </tbody>
+      </table>
+      {isAdmin && editing === null && (
+        <p>
+          <button type="button" onClick={() => setEditing("new")}>
+            + Nouveau parcours
+          </button>
+        </p>
+      )}
+      {isAdmin && editing !== null && (
+        <RouteEditor
+          key={editing === "new" ? "new" : editing.id}
+          route={editing === "new" ? null : editing}
+          steps={steps}
+          articles={articles}
+          routes={routes}
+          onDone={() => {
+            setEditing(null);
+            load();
+          }}
+        />
+      )}
+    </section>
+  );
+}

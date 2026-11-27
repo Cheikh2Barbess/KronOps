@@ -16,6 +16,8 @@ from production.api.serializers import (
     EquipmentSerializer,
     RunCancelSerializer,
     RunCreateSerializer,
+    RouteSerializer,
+    RouteWriteSerializer,
     RunSerializer,
     StepConfigureSerializer,
     StepSettingSerializer,
@@ -148,15 +150,21 @@ class ProductionOptionsView(TenantAPIView):
             .prefetch_related(Prefetch("conversions", queryset=UnitConversion.objects.order_by("unit_name")))
             .order_by("article_type", "code")
         )
+        routes = selectors.route_steps_by_article()
+        available = selectors.production_options()
+        lots = AvailableLotSerializer(available, many=True).data
+        for lot, row in zip(available, lots):
+            row["route_steps"] = (routes.get(lot.article_id) or {}).get("steps")
         return Response({
             "steps": [{"code": s["code"], "label": s["label"]} for s in selectors.active_steps()],
             "equipment": EquipmentSerializer(selectors.equipment_list(active=True), many=True).data,
             "sites": [{"id": str(s.id), "name": s.name} for s in Site.objects.order_by("name")],
-            "lots": AvailableLotSerializer(selectors.production_options(), many=True).data,
+            "lots": lots,
             "output_articles": [
                 {"id": str(a.id), "code": a.code, "name": a.name, "article_type": a.article_type,
                  "base_unit": a.base_unit, "yield_min_pct": a.yield_min_pct, "yield_max_pct": a.yield_max_pct,
-                 "conversions": [{"unit_name": c.unit_name, "factor": c.factor} for c in a.conversions.all()]}
+                 "conversions": [{"unit_name": c.unit_name, "factor": c.factor} for c in a.conversions.all()],
+                 "route_steps": (routes.get(a.id) or {}).get("steps")}
                 for a in articles
             ],
             "waste_reasons": lot_reasons.as_options(reasons.WASTE),
@@ -205,3 +213,55 @@ class StepSettingsView(TenantAPIView):
         services.configure_steps(tenant_id=request.user.tenant_id, user=request.user,
                                  steps=serializer.validated_data["steps"])
         return Response(StepSettingSerializer(selectors.step_catalog(), many=True).data)
+
+
+def _route_articles(ids):
+    """Articles designes par leurs identifiants : la RLS rend introuvables ceux d'un autre client."""
+    found = list(Article.objects.filter(pk__in=ids))
+    if len(found) != len(set(ids)):
+        raise ValidationError({"articles": ["Article introuvable."]})
+    return found
+
+
+class RouteListView(TenantAPIView):
+    """Parcours par produit : lecture pour les roles des referentiels, creation par l'Admin."""
+
+    def get_permissions(self):
+        if self.request.method == "GET":
+            return [IsAuthenticated(), ReferentialPermission()]
+        return [IsAuthenticated(), IsTenantAdmin()]
+
+    @extend_schema(responses={200: RouteSerializer(many=True)})
+    def get(self, request):
+        return Response(RouteSerializer(selectors.routes(), many=True).data)
+
+    @extend_schema(request=RouteWriteSerializer, responses={201: RouteSerializer})
+    def post(self, request):
+        serializer = RouteWriteSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = dict(serializer.validated_data)
+        data["articles"] = _route_articles(data["articles"])
+        route = services.create_route(tenant_id=request.user.tenant_id, user=request.user, **data)
+        return Response(RouteSerializer(selectors.route_or_404(route_id=route.id)).data,
+                        status=status.HTTP_201_CREATED)
+
+
+class RouteDetailView(TenantAPIView):
+    def get_permissions(self):
+        if self.request.method == "GET":
+            return [IsAuthenticated(), ReferentialPermission()]
+        return [IsAuthenticated(), IsTenantAdmin()]
+
+    @extend_schema(responses={200: RouteSerializer})
+    def get(self, request, pk):
+        return Response(RouteSerializer(selectors.route_or_404(route_id=pk)).data)
+
+    @extend_schema(request=RouteWriteSerializer, responses={200: RouteSerializer})
+    def put(self, request, pk):
+        route = selectors.route_or_404(route_id=pk)
+        serializer = RouteWriteSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = dict(serializer.validated_data)
+        data["articles"] = _route_articles(data["articles"])
+        services.update_route(tenant_id=request.user.tenant_id, user=request.user, route=route, **data)
+        return Response(RouteSerializer(selectors.route_or_404(route_id=pk)).data)
