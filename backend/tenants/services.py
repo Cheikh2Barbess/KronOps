@@ -158,7 +158,7 @@ def archive_tenant(*, tenant_id):
     tenant = Tenant.objects.select_for_update().get(pk=tenant_id)
     stamp = timezone.localtime().strftime("%Y%m%d%H%M%S")
     old_name = tenant.name
-    tenant.name = f"{old_name} [archivée {timezone.localtime():%d/%m/%Y %H:%M}]"[:200]
+    tenant.name = f"{old_name} [archivée le {timezone.localtime():%d/%m/%Y à %H:%M}]"[:200]
     tenant.is_active = False
     tenant.save(update_fields=["name", "is_active"])
     with tenant_context(tenant.id):

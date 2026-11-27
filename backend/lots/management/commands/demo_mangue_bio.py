@@ -3,6 +3,9 @@
 Cree une ENTREPRISE DE DEMONSTRATION a part, avec ses propres comptes : les donnees existantes ne sont
 jamais touchees. Producteurs, parcelles, quantites et dates sont fictifs.
 
+--reset : archive l'entreprise de demo existante (renommee, desactivee, comptes bloques, rien d'efface)
+puis en recree une neuve. Le journal reste en insertion seule.
+
 Ce que le produit ne sait pas encore faire, et comment la demo le contourne :
 - pas de champ « parcelle » : le code de parcelle est saisi dans le n° de lot fournisseur ;
 - pas de statut bio par lot ni par producteur : le statut est porte par le nom de l'article ;

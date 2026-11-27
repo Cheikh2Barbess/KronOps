@@ -158,6 +158,15 @@ docker compose exec backend python manage.py demo_mangue_bio
 
 Attends que la première commande rende la main (db, backend et frontend « Healthy ») avant la seconde. Le mot de passe des 4 comptes est demandé au clavier (10 caractères minimum, rien ne s'affiche, c'est normal). Comptes : `demo.direction` (Admin), `demo.qualite` (Qualité), `demo.production` (Production), `demo.reception` (Opérateur). La commande affiche à la fin les codes à chercher. Elle refuse de tourner deux fois.
 
+**Repartir à neuf après une répétition** (la répétition débloque le lot d'ananas et ajoute des réceptions) :
+
+```
+docker compose up -d --wait
+docker compose exec backend python manage.py demo_mangue_bio --reset
+```
+
+Rien n'est effacé : le journal et les mouvements sont en insertion seule, même pour la démo. L'ancienne entreprise de démo est renommée « ... [archivée le ...] » et désactivée, ses comptes ne peuvent plus se connecter, puis une entreprise de démo neuve est créée avec les mêmes identifiants et un mot de passe redemandé. Les autres entreprises ne sont pas touchées. Par sécurité, la remise à zéro refuse de tourner si un identifiant `demo.*` appartient à une autre entreprise que la démo.
+
 Limites connues, dites franchement pendant la démo : pas encore de champ parcelle (le code de parcelle va dans le n° de lot fournisseur), pas de statut bio par lot ou par producteur (il est dans le nom de l'article), pas d'écran de séchage ni d'ensachage (ordres de fabrication US-06 à US-08 à venir), et le journal date chaque ligne au moment du chargement, pas à la date de juin indiquée sur les mouvements.
 
 ## En cas de problème
