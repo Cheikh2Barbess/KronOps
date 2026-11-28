@@ -6,6 +6,7 @@ from rest_framework.response import Response
 
 from core.api import TenantAPIView
 from catalog.models import Article
+from dashboard import reasons as target_reasons
 from dashboard import gap_selectors, product_selectors, selectors, services
 from dashboard.api.serializers import (
     DashboardQuerySerializer,
@@ -83,7 +84,8 @@ class TargetView(TenantAPIView):
     def _payload(self, year):
         rows = product_selectors.targets_for_year(year)
         return {"year": year, "months": product_selectors.MONTHS,
-                "articles": [{**r, "id": str(r["id"])} for r in rows]}
+                "articles": [{**r, "id": str(r["id"])} for r in rows],
+                "change_reasons": [{"code": c, "label": label} for c, label in target_reasons.TARGET_CHANGE.items()]}
 
     @extend_schema(parameters=[OpenApiParameter("year", int, description="Année (défaut : l'année en cours)")])
     def get(self, request):
@@ -100,7 +102,8 @@ class TargetView(TenantAPIView):
         if article is None:
             raise ValidationError({"article": ["Introuvable."]})
         services.set_targets(tenant_id=request.user.tenant_id, user=request.user, article=article,
-                             year=data["year"], months=data["months"])
+                             year=data["year"], months=data["months"], reason_code=data["reason_code"],
+                             reason_comment=data["reason_comment"])
         row = next(r for r in self._payload(data["year"])["articles"] if r["id"] == str(article.id))
         return Response(row)
 

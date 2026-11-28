@@ -1025,3 +1025,7 @@ th[aria-sort="descending"] .sort-btn .icon {
 /* Une liste deroulante aux libelles longs ne doit jamais elargir la page sur telephone. */
 select { max-width: 100%; }
 form label { max-width: 100%; min-width: 0; }
+/* Fraicheur d'une tuile : derniere saisie. Plus de 2 jours : en couleur d'alerte, avec l'icone horloge. */
+.tile-fresh { display: inline-flex; align-items: center; gap: 4px; }
+.tile-foot .tile-fresh .icon { opacity: 1; }
+.tile-fresh-old { color: #b54708; font-weight: 600; }

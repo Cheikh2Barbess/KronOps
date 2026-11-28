@@ -36,6 +36,8 @@ STOP_CAUSES = {
     OTHER: "Autre (préciser)",
 }
 PLANNED_STOPS = {"nettoyage_changement", "maintenance_preventive"}
+# Pannes au sens du MTTR (temps moyen de reparation) : ce que la maintenance repare.
+BREAKDOWNS = {"panne_mecanique", "panne_electrique"}
 
 # Annulation d'un arret declare par erreur.
 STOP_CANCEL = {

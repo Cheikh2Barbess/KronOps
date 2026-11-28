@@ -18,7 +18,7 @@ from django.utils import timezone
 
 from actions import selectors as action_selectors
 from catalog.models import Article, OrganicStatus, Parcel
-from dashboard import product_selectors
+from dashboard import product_selectors, reliability_selectors
 from dashboard.indicators import BAD, INFO, OK, STATUS_LABELS, THRESHOLDS, WARN, defaults, status_for, worst
 from dashboard.models import DashboardThreshold
 from lots import selectors as lot_selectors
@@ -39,14 +39,18 @@ RECEPTION = "reception"  # libelle de « l'etape » d'origine d'un lot recu
 # Tuiles par role, dans l'ordre d'affichage. Le patron voit le global, la production le flux, la qualite les
 # controles, l'operateur ce qu'il a a faire. Chaque tuile ne lit que des donnees ouvertes a ce role.
 ROLE_TILES = {
-    User.Role.ADMIN: ["alerts", "actions", "targets", "products", "produced", "received", "shipped", "yields", "qc", "line_stops",
-                      "bottleneck", "stock", "blocked", "approvals", "expiry", "organic", "reception_conformity"],
-    User.Role.LECTURE: ["alerts", "actions", "targets", "products", "produced", "received", "shipped", "yields", "qc", "line_stops",
-                        "bottleneck", "stock", "blocked", "expiry", "organic", "reception_conformity"],
-    User.Role.PRODUCTION: ["alerts", "actions", "targets", "products", "line_stops", "runs", "bottleneck", "wip", "yields", "produced",
-                           "received", "shipped", "blocked", "approvals", "expiry", "late_entries"],
+    User.Role.ADMIN: ["alerts", "actions", "targets", "products", "produced", "received", "shipped", "yields", "qc",
+                      "line_stops", "mttr", "bottleneck", "coverage", "stock", "blocked", "approvals", "expiry",
+                      "suppliers", "organic", "reception_conformity", "data_quality"],
+    User.Role.LECTURE: ["alerts", "actions", "targets", "products", "produced", "received", "shipped", "yields", "qc",
+                        "line_stops", "mttr", "bottleneck", "coverage", "stock", "blocked", "expiry", "suppliers",
+                        "organic", "reception_conformity"],
+    User.Role.PRODUCTION: ["alerts", "actions", "targets", "products", "line_stops", "mttr", "runs", "bottleneck",
+                           "coverage", "wip", "yields", "produced", "received", "shipped", "blocked", "approvals",
+                           "expiry", "late_entries", "data_quality"],
     User.Role.QUALITE: ["alerts", "actions", "products", "qc", "moisture", "ready_without_qc", "blocked", "approvals",
-                        "reception_conformity", "organic", "expiry", "yields", "late_entries", "line_stops"],
+                        "suppliers", "reception_conformity", "organic", "expiry", "yields", "late_entries",
+                        "line_stops", "data_quality"],
     User.Role.OPERATEUR: ["actions", "alerts", "wip", "my_entries", "line_stops", "received", "approvals", "blocked"],
 }
 
@@ -226,7 +230,7 @@ def _tile(code, title, *, value=None, unit="", status=INFO, subtitle="", thresho
         "code": code, "title": title, "value": value, "value_label": value_label, "unit": unit,
         "status": status, "status_label": STATUS_LABELS[status], "subtitle": subtitle, "threshold": threshold,
         "detail": list(detail), "empty": empty, "scope": scope, "source": source, "previous": None,
-        "link": link,
+        "link": link, "last_entry": None,
     }
 
 
@@ -902,7 +906,9 @@ def tile_actions(ctx):
 
 
 TILES = {
-    "alerts": tile_alerts, "actions": tile_actions,
+    "alerts": tile_alerts, "actions": tile_actions, "coverage": reliability_selectors.tile_coverage,
+    "mttr": reliability_selectors.tile_mttr, "suppliers": reliability_selectors.tile_suppliers,
+    "data_quality": reliability_selectors.tile_data_quality,
     "targets": product_selectors.tile_targets, "products": product_selectors.tile_products,
     "line_stops": product_selectors.tile_line_stops,
     "received": tile_received, "produced": tile_produced, "shipped": tile_shipped, "yields": tile_yields,
@@ -921,6 +927,9 @@ def dashboard(*, user, days=None, now=None):
     days = days or default_days(user.role)
     ctx = Context(user=user, days=days, now=now)
     tiles = [TILES[code](ctx) for code in ROLE_TILES.get(user.role, [])]
+    entries = reliability_selectors.last_entries()
+    for tile in tiles:
+        tile["last_entry"] = reliability_selectors.last_entry_for(tile["code"], entries)
     # Comparaison : meme calcul sur la periode juste avant (meme duree). Seulement pour les tuiles « sur la
     # periode » : un etat actuel (stock, lots bloques) n'a pas d'historique stocke, donc pas de comparaison.
     previous_ctx = Context(user=user, days=days, now=ctx.now - datetime.timedelta(days=days))

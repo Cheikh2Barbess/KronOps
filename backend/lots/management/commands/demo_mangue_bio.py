@@ -601,6 +601,19 @@ class Demo:
         return production.declare_stop(tenant_id=self.t, user=self.op, equipment=self.e["CDT-S1"],
                                        cause_code="manque_emballage", started_at=self.clock.limit - H)
 
+    def _double_entry(self):
+        """Double saisie : la derniere livraison est saisie une seconde fois 4 minutes apres (tablette qui n'a pas
+        affiche la confirmation). Le controle « Qualité des données » la signale, on l'annule en direct."""
+        first = Movement.objects.filter(movement_type=Movement.Type.RECEPTION).select_related("lot").order_by(
+            "-occurred_at").first()
+        lot, at = first.lot, first.occurred_at + 4 * MIN
+        self.clock.set(at + 2 * MIN)
+        return services.receive_lot(
+            tenant_id=self.t, user=self.op, article=lot.article, supplier=lot.supplier, supplier_lot_code="",
+            parcel=lot.parcel, quantity=first.quantity, unit=lot.article.base_unit, date_type=lot.date_type,
+            expiry_date=lot.expiry_date, temperature_c=lot.reception_temperature_c, occurred_at=at, site=lot.site,
+        )
+
     def _actions(self, today, ongoing_stop, blocked_lot):
         """Actions de la saison : une terminee, une en retard, une en cours, plus l'appel de cartons sur l'arret en
         cours. Le lot d'ananas bloque et la coco sous la cible restent sans action : on la cree en direct."""
@@ -879,6 +892,7 @@ class Demo:
             clock.set(_at(today - datetime.timedelta(days=2), 16))
             services.request_approval(tenant_id=self.t, user=self.op, lot_id=mango["last"].id, action="scrap",
                                       reason_code="emballage_abime", quantity=Decimal("20"))
+            double = self._double_entry()
             stop = self._stops(today)
             self._actions(today, stop, coconut["k2"])
             clock.set(clock.limit)
@@ -894,5 +908,6 @@ class Demo:
             f"Lot détruit après double validation : {mango['bad'].code}",
             f"Rebut en attente de validation : {mango['last'].code} (2 cartons écrasés)",
             "Arrêt en cours à terminer en direct : CDT-S1 (manque de cartons vides), écran Arrêts de ligne",
+            f"Double saisie signalée par la tuile Qualité des données : {double.code}, à annuler en direct",
             "Écran Actions : une action en retard (révision SEC-S2), créer en direct l'action du lot d'ananas bloqué",
         ]

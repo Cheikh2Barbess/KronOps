@@ -65,6 +65,15 @@ THRESHOLDS = {
         "green": "2", "red": "6",
         "help": "Heures d'arrêt non planifié (panne, coupure, manque), tous équipements confondus, par semaine en moyenne sur la période.",
     },
+    "coverage_days": {
+        "label": "Couverture matière", "unit": "jours", "direction": HIGHER, "green": "7", "red": "3",
+        "help": "Jours de stock d'une matière ou d'un emballage au rythme de consommation des 14 derniers jours.",
+    },
+    "mttr_hours": {
+        "label": "Temps moyen de réparation d'une panne (MTTR)", "unit": "h", "direction": LOWER, "green": "2",
+        "red": "4",
+        "help": "Durée moyenne des pannes mécaniques et électriques terminées sur la période.",
+    },
     "ongoing_stop_hours": {
         "label": "Durée d'un arrêt en cours", "unit": "h", "direction": LOWER, "green": "1", "red": "4",
         "help": "Un équipement à l'arrêt depuis plus longtemps que ce seuil devient une alerte (jaune, puis rouge).",
