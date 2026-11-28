@@ -13,5 +13,9 @@ urlpatterns = [
     path("production/routes/", views.RouteListView.as_view(), name="route-list"),
     path("production/routes/<uuid:pk>/", views.RouteDetailView.as_view(), name="route-detail"),
     path("production/pipeline/", views.PipelineView.as_view(), name="pipeline"),
+    path("production/stops/", views.StopListView.as_view(), name="stop-list"),
+    path("production/stops/options/", views.StopOptionsView.as_view(), name="stop-options"),
+    path("production/stops/<uuid:pk>/end/", views.StopEndView.as_view(), name="stop-end"),
+    path("production/stops/<uuid:pk>/cancel/", views.StopCancelView.as_view(), name="stop-cancel"),
     path("production/balance/", views.MaterialBalanceView.as_view(), name="material-balance"),
 ]

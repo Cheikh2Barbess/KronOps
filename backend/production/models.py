@@ -203,3 +203,33 @@ class PipelineSetting(TenantModel):
 
     def __str__(self):
         return self.code
+
+
+class LineStop(TenantModel):
+    """Arret d'un equipement (sechoir, ligne...), declare au poste. Cause choisie dans production.reasons.
+
+    Un arret sans fin est « en cours ». Pas d'effacement : une erreur s'annule avec un motif (la ligne reste).
+    """
+
+    equipment = models.ForeignKey(Equipment, on_delete=models.PROTECT, related_name="stops")
+    site = models.ForeignKey("tenants.Site", on_delete=models.PROTECT, null=True, blank=True, related_name="+")
+    started_at = models.DateTimeField("début")
+    ended_at = models.DateTimeField("fin", null=True, blank=True)
+    cause_code = models.CharField("cause (code)", max_length=40)
+    comment = models.TextField("précision", blank=True)
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, null=True, related_name="+")
+    ended_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, null=True, blank=True,
+                                 related_name="+")
+    cancelled_at = models.DateTimeField("annulé le", null=True, blank=True)
+    cancelled_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, null=True, blank=True,
+                                     related_name="+")
+    cancel_reason_code = models.CharField("motif d'annulation (code)", max_length=40, blank=True)
+    cancel_comment = models.TextField("précision sur l'annulation", blank=True)
+
+    class Meta:
+        verbose_name = "arrêt de ligne"
+        constraints = [
+            models.CheckConstraint(condition=Q(ended_at__isnull=True) | Q(ended_at__gte=models.F("started_at")),
+                                   name="linestop_end_after_start"),
+        ]
+        indexes = [models.Index(fields=["tenant", "started_at"]), models.Index(fields=["tenant", "equipment"])]

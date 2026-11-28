@@ -1,5 +1,8 @@
+import datetime
+
 from django.db.models import Prefetch
-from drf_spectacular.utils import extend_schema
+from django.utils import timezone
+from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework import status
 from rest_framework.exceptions import ValidationError
 from rest_framework.permissions import IsAuthenticated
@@ -22,6 +25,10 @@ from production.api.serializers import (
     StepConfigureSerializer,
     StepSettingSerializer,
     StepTotalSerializer,
+    StopCancelSerializer,
+    StopCreateSerializer,
+    StopEndSerializer,
+    StopSerializer,
 )
 from production.models import Equipment, ProductionRun
 from tenants.models import Site
@@ -289,3 +296,78 @@ class PipelineView(TenantAPIView):
         services.configure_pipeline(tenant_id=request.user.tenant_id, user=request.user,
                                     steps=serializer.validated_data["steps"])
         return Response(selectors.pipeline())
+
+
+# Arrets de ligne -------------------------------------------------------------------
+
+
+class StopListView(TenantAPIView):
+    """Arrets de ligne : lecture pour tous les roles, declaration par Admin, Production et Operateur."""
+
+    permission_classes = [IsAuthenticated, ProductionPermission]
+
+    @extend_schema(responses={200: StopSerializer(many=True)},
+                   parameters=[OpenApiParameter("days", int, description="Arrets des N derniers jours (defaut 30)"),
+                               OpenApiParameter("ongoing", bool, description="Seulement les arrets en cours")])
+    def get(self, request):
+        try:
+            days = min(max(int(request.query_params.get("days", 30)), 1), 400)
+        except ValueError:
+            raise ValidationError({"days": ["Nombre de jours attendu."]})
+        found = selectors.line_stops(start=timezone.now() - datetime.timedelta(days=days))
+        if request.query_params.get("ongoing") in ("1", "true"):
+            found = found.filter(ended_at__isnull=True, cancelled_at__isnull=True)
+        return Response(StopSerializer([selectors.decorate_stop(s) for s in found[:500]], many=True).data)
+
+    @extend_schema(request=StopCreateSerializer, responses={201: StopSerializer})
+    def post(self, request):
+        serializer = StopCreateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = dict(serializer.validated_data)
+        equipment = Equipment.objects.filter(pk=data.pop("equipment")).first()
+        if equipment is None:
+            raise ValidationError({"equipment": ["Introuvable."]})
+        stop = services.declare_stop(tenant_id=request.user.tenant_id, user=request.user, equipment=equipment,
+                                     **data)
+        return Response(StopSerializer(selectors.stop_or_404(stop_id=stop.id)).data, status=status.HTTP_201_CREATED)
+
+
+class StopOptionsView(TenantAPIView):
+    permission_classes = [IsAuthenticated, ProductionPermission]
+
+    @extend_schema(responses={200: dict})
+    def get(self, request):
+        return Response({
+            "causes": [{"code": c, "label": label, "planned": c in reasons.PLANNED_STOPS}
+                       for c, label in reasons.STOP_CAUSES.items()],
+            "cancel_reasons": lot_reasons.as_options(reasons.STOP_CANCEL),
+            "equipment": EquipmentSerializer(selectors.equipment_list(active=True), many=True).data,
+        })
+
+
+class StopEndView(TenantAPIView):
+    permission_classes = [IsAuthenticated, ProductionPermission]
+
+    @extend_schema(request=StopEndSerializer, responses={200: StopSerializer})
+    def post(self, request, pk):
+        stop = selectors.stop_or_404(stop_id=pk)
+        serializer = StopEndSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        services.end_stop(tenant_id=request.user.tenant_id, user=request.user, stop_id=stop.id,
+                          ended_at=serializer.validated_data.get("ended_at"))
+        return Response(StopSerializer(selectors.stop_or_404(stop_id=pk)).data)
+
+
+class StopCancelView(TenantAPIView):
+    """Annuler un arret declare par erreur : un responsable (Admin, Production)."""
+
+    permission_classes = [IsAuthenticated, RunCancelPermission]
+
+    @extend_schema(request=StopCancelSerializer, responses={200: StopSerializer})
+    def post(self, request, pk):
+        stop = selectors.stop_or_404(stop_id=pk)
+        serializer = StopCancelSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        services.cancel_stop(tenant_id=request.user.tenant_id, user=request.user, stop_id=stop.id,
+                             **serializer.validated_data)
+        return Response(StopSerializer(selectors.stop_or_404(stop_id=pk)).data)

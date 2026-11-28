@@ -118,6 +118,58 @@ MANGO_HISTORY = [
     (D(2026, 7, 21), [("NAP-07", 73), ("SIN-03", 70)], 52, "SEC-N3", "0.50", "0.142", "14.2"),
     (D(2026, 7, 28), [("KAR-12", 71), ("TIO-02", 72)], 48, "SEC-N1", "0.48", "0.130", "14.7"),
 ]
+# Saison 2025, meme usine : sert a comparer saison contre saison au tableau de bord. FICTIVE (rendements un peu
+# plus faibles qu'en 2026, attente plus longue avant l'epluchage : un seul epluchage par jour cette annee-la).
+MANGO_2025 = [
+    (D(2025, 4, 14), [("NAP-07", 70), ("SIN-03", 70)], 60, "SEC-N1", "0.52", "0.146", "14.4"),
+    (D(2025, 4, 21), [("KAR-12", 72), ("TIO-02", 70)], 66, "SEC-N3", "0.52", "0.147", "14.1"),
+    (D(2025, 4, 28), [("NAP-07", 71), ("SIN-03", 72)], 70, "SEC-N1", "0.52", "0.145", "14.6"),
+    (D(2025, 5, 5), [("KAR-12", 70), ("TIO-02", 71)], 78, "SEC-N2", "0.51", "0.146", "14.2"),
+    (D(2025, 5, 12), [("NAP-07", 72), ("SIN-03", 70)], 84, "SEC-N3", "0.52", "0.144", "14.8"),
+    (D(2025, 5, 19), [("KAR-12", 71), ("TIO-02", 72)], 74, "SEC-N1", "0.51", "0.146", "14.0"),
+    (D(2025, 5, 26), [("NAP-07", 70), ("SIN-03", 71)], 88, "SEC-N2", "0.52", "0.143", "14.5"),
+    (D(2025, 6, 2), [("KAR-12", 72), ("TIO-02", 70)], 76, "SEC-N3", "0.51", "0.145", "14.3"),
+    (D(2025, 6, 16), [("NAP-07", 71), ("SIN-03", 70)], 68, "SEC-N1", "0.51", "0.142", "14.7"),
+    (D(2025, 6, 30), [("KAR-12", 70), ("TIO-02", 71)], 60, "SEC-N2", "0.50", "0.140", "14.6"),
+    (D(2025, 7, 14), [("NAP-07", 70), ("SIN-03", 72)], 54, "SEC-N3", "0.49", "0.136", "14.9"),
+    (D(2025, 7, 21), [("KAR-12", 71), ("TIO-02", 70)], 50, "SEC-N1", "0.48", "0.128", "14.8"),
+]
+
+# Cibles mensuelles de kilos seches (Sollwert), FICTIVES : a remplacer par le plan du pilote.
+# (article, annee, [12 mois, None = pas de cible])
+TARGETS = [
+    ("sechee", 2025, [None, None, None, 700, 900, 700, 500, 100, None, None, None, None]),
+    ("sechee", 2026, [None, None, None, 650, 900, 1000, 900, 300, None, None, None, None]),
+    ("ananas_seche", 2026, [250, 250, 250, None, None, None, None, 120, 250, 250, 450, 300]),
+    ("ananas_seche", 2027, [300, 300, 300, 200, None, None, None, None, None, None, None, None]),
+    ("coco_sechee", 2026, [None, None, None, None, None, None, 500, 1100, 1100, 1300, 1200, 1100]),
+    ("coco_sechee", 2027, [1100, 1100, 1100, 1100, None, None, None, None, None, None, None, None]),
+]
+
+# Arrets de ligne FICTIFS. (debut (date absolue ou jours avant aujourd'hui), heure, equipement, cause, heures)
+# Le sechoir 2 s'arrete la nuit du 12 au 13 juin (regulation) : il explique le rendement bas de ce sechage.
+STOPS = [
+    (D(2026, 4, 2), 7, "SEC-N1", "maintenance_preventive", 6),
+    (D(2026, 4, 2), 7, "SEC-N2", "maintenance_preventive", 6),
+    (D(2026, 4, 2), 13, "SEC-N3", "maintenance_preventive", 6),
+    (D(2026, 4, 24), 14, "SEC-N3", "coupure_courant", 4),
+    (D(2026, 5, 14), 22, "SEC-N1", "panne_mecanique", 9),
+    (D(2026, 5, 28), 9, "CDT-N1", "manque_emballage", 3),
+    (D(2026, 6, 13), 2, "SEC-N2", "panne_electrique", 5),
+    (D(2026, 6, 25), 8, "EPL-N1", "manque_personnel", 4),
+    (D(2026, 7, 9), 15, "SEC-N1", "coupure_courant", 3),
+    (D(2026, 8, 20), 7, "SEC-N1", "nettoyage_changement", 8),
+    (D(2026, 8, 20), 7, "SEC-N2", "nettoyage_changement", 8),
+    (D(2026, 8, 20), 7, "SEC-N3", "nettoyage_changement", 8),
+    (100, 7, "SEC-S1", "nettoyage_changement", 6),
+    (70, 3, "SEC-S2", "panne_mecanique", 7),
+    (45, 16, "SEC-S1", "coupure_courant", 2),
+    (33, 10, "CDT-S1", "manque_emballage", 5),
+    (20, 1, "SEC-S2", "manque_combustible", 6),
+    (12, 18, "SEC-S1", "coupure_courant", 3),
+    (5, 9, "RAP-S1", "panne_mecanique", 4),
+]
+
 MANGO_FOREIGN_BODY = 3  # carton de ce lot : corps etranger (fragment de noyau), bloque, retrie, debloque
 MANGO_LATE_RECEPTION = 4  # reception saisie 5 h apres, tablette indisponible
 
@@ -516,6 +568,37 @@ class Demo:
             self._qc(carton, check_at, moisture)
         return carton
 
+    def _mango_2025(self, nord):
+        """Saison 2025 : meme chaine que 2026, tout est expedie avant la saison suivante."""
+        p = self.p
+        cartons = [self._mango_batch(100 + i, row, nord) for i, row in enumerate(MANGO_2025)]
+
+        def lines(indexes):
+            return [(cartons[i], Decimal(cartons[i].production_run.output_quantity), None) for i in indexes]
+
+        self._ship(lines([0, 1, 2, 3]), _at(D(2025, 5, 30), 7), p["rotterdam"], "250500", nord)
+        self._ship(lines([4, 5, 6, 7]), _at(D(2025, 6, 27), 7), p["lyon"], "250600", nord)
+        self._ship(lines([8, 9, 10, 11]), _at(D(2025, 8, 8), 7), p["hambourg"], "250800", nord)
+
+    def _targets(self):
+        for key, year, months in TARGETS:
+            dashboard.set_targets(tenant_id=self.t, user=self.admin, article=self.a[key], year=year,
+                                  months=[None if m is None else Decimal(m) for m in months])
+
+    def _stops(self, today):
+        """Arrets de la saison, declares au fil de l'eau, plus un arret en cours (cartons vides attendus)."""
+        users = {"CDT": self.op, "EPL": self.op, "RAP": self.op}
+        for when, hour, code, cause, hours in STOPS:
+            day = when if isinstance(when, D) else today - datetime.timedelta(days=when)
+            start = _at(day, hour)
+            end = start + hours * H
+            self.clock.set(end + 10 * MIN)
+            production.declare_stop(tenant_id=self.t, user=users.get(code[:3], self.prod), equipment=self.e[code],
+                                    cause_code=cause, started_at=start, ended_at=end)
+        self.clock.set(self.clock.limit)
+        production.declare_stop(tenant_id=self.t, user=self.op, equipment=self.e["CDT-S1"],
+                                cause_code="manque_emballage", started_at=self.clock.limit - H)
+
     def _mango(self, nord, sud):
         a, e, p = self.a, self.e, self.p
         cartons = [self._mango_batch(i, row, nord) for i, row in enumerate(MANGO_HISTORY)]
@@ -751,7 +834,7 @@ class Demo:
         with SimulatedClock() as clock:
             self.clock = clock
             today = timezone.localdate(clock.limit)
-            self._accounts(_at(D(2026, 1, 5), 8))
+            self._accounts(_at(D(2025, 3, 3), 8))
             self.a, self.p = self._catalog()
             self._steps_and_routes(self.a)
             sites, self.e = self._sites()
@@ -759,6 +842,8 @@ class Demo:
             # Seuil propre a l'entreprise (ecran Seuils) : saisies tardives tolerees jusqu'a 3 %, rouge a 10 %.
             dashboard.set_threshold(tenant_id=self.t, user=self.admin, code="late_entries_pct", green="3", red="10")
 
+            self._targets()
+            self._mango_2025(nord)
             mango = self._mango(nord, sud)
             pineapple = self._pineapple(nord, sud, today)
             coconut = self._coconut(sud, today)
@@ -768,6 +853,7 @@ class Demo:
             clock.set(_at(today - datetime.timedelta(days=2), 16))
             services.request_approval(tenant_id=self.t, user=self.op, lot_id=mango["last"].id, action="scrap",
                                       reason_code="emballage_abime", quantity=Decimal("20"))
+            self._stops(today)
             clock.set(clock.limit)
         assert timezone.now is clock._real
         return [
@@ -780,4 +866,5 @@ class Demo:
             f"Contrôle qualité non conforme (humidité), lot bloqué : {coconut['k2'].code}",
             f"Lot détruit après double validation : {mango['bad'].code}",
             f"Rebut en attente de validation : {mango['last'].code} (2 cartons écrasés)",
+            "Arrêt en cours à terminer en direct : CDT-S1 (manque de cartons vides), écran Arrêts de ligne",
         ]

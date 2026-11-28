@@ -26,7 +26,9 @@ type Tile = {
   threshold: Threshold | null;
   detail: Detail[];
   empty: boolean;
-  scope: "period" | "now";
+  // period : sur la periode choisie (avec comparaison a la periode d'avant). now : etat actuel.
+  // compare : comparaisons jour, semaine, mois, saison dans le plein ecran.
+  scope: "period" | "now" | "compare";
   source: string;
   // Meme indicateur sur la periode juste avant (meme duree). null : pas de donnee, ou etat actuel sans historique.
   previous: number | null;
@@ -45,6 +47,9 @@ const ROLE_TITLES: Record<string, string> = {
 
 // Une icone par indicateur (meme famille que le menu).
 const TILE_ICONS: Record<string, IconName> = {
+  targets: "target",
+  products: "chart-column",
+  line_stops: "circle-pause",
   received: "truck",
   produced: "factory",
   shipped: "ship",
@@ -84,7 +89,7 @@ function TileValue({ tile }: { tile: Tile }) {
 // (ecart en points). Vert si l'evolution va dans le bon sens selon le seuil, rouge sinon, gris sans seuil.
 // Toujours un mot (« en hausse », « en baisse », « stable ») en plus de la fleche.
 function Trend({ tile, days }: { tile: Tile; days: number }) {
-  if (tile.scope === "now") return null;
+  if (tile.scope !== "period") return null;
   if (tile.empty || tile.value === null) return null;
   const versus = PREVIOUS_LABELS[days] || "période d'avant";
   if (tile.previous === null || tile.previous === undefined) return <span className="trend">Pas de donnée sur les {versus}</span>;
@@ -131,7 +136,7 @@ function TileCard({ tile, days, onOpen }: { tile: Tile; days: number; onOpen: ()
         tile.subtitle && <span className="tile-sub">{tile.subtitle}</span>
       )}
       <span className="tile-foot">
-        <span>{tile.scope === "now" ? "État actuel, sans comparaison" : PERIOD_LABELS[days] || `${days} jours`}</span>
+        <span>{tile.scope === "compare" ? "Jour, semaine, mois, saison" : tile.scope === "now" ? (tile.code === "targets" ? "Mois en cours, à date" : "État actuel, sans comparaison") : PERIOD_LABELS[days] || `${days} jours`}</span>
         <Icon name="maximize-2" size={14} />
       </span>
     </button>
@@ -171,7 +176,7 @@ function FullScreen({ tile, days, onClose }: { tile: Tile; days: number; onClose
           </div>
           {tile.subtitle && <p style={{ margin: "12px 0 0", color: "var(--text-2)" }}>{tile.subtitle}</p>}
           <p className="overlay-meta">
-            {tile.scope === "now" ? "État actuel." : `Période : ${PERIOD_LABELS[days] || `${days} jours`}.`} Source : {tile.source}
+            {tile.scope === "compare" ? "Comparaisons fixes, indépendantes de la période choisie." : tile.scope === "now" ? "État actuel." : `Période : ${PERIOD_LABELS[days] || `${days} jours`}.`} Source : {tile.source}
             {tile.threshold && (
               <>
                 <br />
@@ -235,6 +240,12 @@ export default function DashboardPage() {
             <Icon name="refresh-cw" size={16} />
             Actualiser
           </button>
+          {me.role === "admin" && (
+            <Link href="/dashboard/cibles" className="btn-link">
+              <Icon name="target" size={16} />
+              Cibles de production
+            </Link>
+          )}
           {me.role === "admin" && (
             <Link href="/dashboard/seuils" className="btn-link">
               <Icon name="sliders-horizontal" size={16} />

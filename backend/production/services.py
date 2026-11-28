@@ -8,9 +8,9 @@ l'entree du lot, saisie tardive justifiee. Le rendement hors fourchette est sign
 import datetime
 from decimal import Decimal
 
-from django.db import transaction
+from django.db import models, transaction
 from django.utils import timezone
-from rest_framework.exceptions import ValidationError
+from rest_framework.exceptions import NotFound, ValidationError
 
 from audit.services import record_audit
 from catalog.models import Article, OrganicStatus
@@ -21,6 +21,7 @@ from lots.models import Lot, LotLink, Movement
 from production import reasons
 from production.models import (
     Equipment,
+    LineStop,
     PipelineSetting,
     ProductionInput,
     ProductionRun,
@@ -494,3 +495,106 @@ def configure_pipeline(*, tenant_id, user, steps):
             record_audit(tenant_id=tenant_id, user=user, action="update", entity=setting, old_values=old,
                          new_values={"code": code, "is_active": is_active})
     publish_event(tenant_id=tenant_id, event_type="production.pipeline_configured", payload={"changes": wanted})
+
+
+# Arrets de ligne ------------------------------------------------------------------
+
+FUTURE_TOLERANCE = datetime.timedelta(minutes=5)
+
+
+def _stop_values(stop):
+    return {
+        "equipment_id": str(stop.equipment_id), "cause_code": stop.cause_code, "comment": stop.comment,
+        "started_at": stop.started_at.isoformat(), "ended_at": stop.ended_at.isoformat() if stop.ended_at else None,
+        "cancel_reason_code": stop.cancel_reason_code,
+    }
+
+
+def _check_not_future(value, field):
+    if value > timezone.now() + FUTURE_TOLERANCE:
+        raise ValidationError({field: ["Cette heure est dans le futur."]})
+
+
+def _check_overlap(stop_equipment_id, started_at, ended_at, exclude_id=None):
+    """Un equipement n'a qu'un arret a la fois (deux arrets ne se chevauchent pas, un seul en cours)."""
+    qs = LineStop.objects.filter(equipment_id=stop_equipment_id, cancelled_at__isnull=True)
+    if exclude_id:
+        qs = qs.exclude(pk=exclude_id)
+    if ended_at is None and qs.filter(ended_at__isnull=True).exists():
+        raise ValidationError({"equipment": ["Cet équipement a déjà un arrêt en cours : terminez-le d'abord."]})
+    upper = ended_at or timezone.now() + FUTURE_TOLERANCE
+    clash = qs.filter(started_at__lt=upper).filter(models.Q(ended_at__isnull=True) | models.Q(ended_at__gt=started_at))
+    if clash.exists():
+        raise ValidationError({"started_at": ["Un autre arrêt de cet équipement couvre déjà cette période."]})
+
+
+@transaction.atomic
+def declare_stop(*, tenant_id, user, equipment, cause_code, comment="", started_at=None, ended_at=None):
+    """Declare un arret : en cours (sans fin) ou deja termine (debut et fin). Cause dans la liste fermee."""
+    cause_code, comment = lot_reasons.check(reasons.STOP_CAUSES, cause_code, comment, field="cause_code")
+    if not equipment.is_active:
+        raise ValidationError({"equipment": ["Cet équipement est désactivé."]})
+    started_at = started_at or timezone.now()
+    _check_not_future(started_at, "started_at")
+    if ended_at is not None:
+        _check_not_future(ended_at, "ended_at")
+        if ended_at < started_at:
+            raise ValidationError({"ended_at": ["La fin doit être après le début."]})
+    # Verrou sur l'equipement : deux declarations simultanees du meme arret ne passent pas toutes les deux.
+    Equipment.objects.select_for_update().filter(pk=equipment.pk).first()
+    _check_overlap(equipment.pk, started_at, ended_at)
+    stop = LineStop.objects.create(
+        tenant_id=tenant_id, equipment=equipment, site=equipment.site, started_at=started_at, ended_at=ended_at,
+        cause_code=cause_code, comment=comment, user=user, ended_by=user if ended_at else None,
+    )
+    record_audit(tenant_id=tenant_id, user=user, action="create", entity=stop, new_values=_stop_values(stop))
+    publish_event(tenant_id=tenant_id, event_type="production.stop_declared",
+                  payload={"stop_id": str(stop.id), "equipment_id": str(equipment.id), "cause_code": cause_code,
+                           "planned": cause_code in reasons.PLANNED_STOPS})
+    return stop
+
+
+def _open_stop(stop_id):
+    stop = LineStop.objects.select_for_update().filter(pk=stop_id).first()
+    if stop is None:
+        raise NotFound("Arrêt introuvable.")
+    if stop.cancelled_at is not None:
+        raise ValidationError({"stop": ["Cet arrêt est annulé."]})
+    return stop
+
+
+@transaction.atomic
+def end_stop(*, tenant_id, user, stop_id, ended_at=None):
+    """Termine un arret en cours (une seule fois)."""
+    stop = _open_stop(stop_id)
+    if stop.ended_at is not None:
+        raise ValidationError({"stop": ["Cet arrêt est déjà terminé."]})
+    ended_at = ended_at or timezone.now()
+    _check_not_future(ended_at, "ended_at")
+    if ended_at < stop.started_at:
+        raise ValidationError({"ended_at": ["La fin doit être après le début."]})
+    old = _stop_values(stop)
+    stop.ended_at, stop.ended_by = ended_at, user
+    stop.save(update_fields=["ended_at", "ended_by", "updated_at"])
+    record_audit(tenant_id=tenant_id, user=user, action="update", entity=stop, old_values=old,
+                 new_values=_stop_values(stop))
+    publish_event(tenant_id=tenant_id, event_type="production.stop_ended",
+                  payload={"stop_id": str(stop.id), "equipment_id": str(stop.equipment_id)})
+    return stop
+
+
+@transaction.atomic
+def cancel_stop(*, tenant_id, user, stop_id, reason_code, comment=""):
+    """Annule un arret declare par erreur. La ligne reste, marquee annulee, et sort des calculs."""
+    reason_code, comment = lot_reasons.check(reasons.STOP_CANCEL, reason_code, comment)
+    stop = _open_stop(stop_id)
+    old = _stop_values(stop)
+    stop.cancelled_at, stop.cancelled_by = timezone.now(), user
+    stop.cancel_reason_code, stop.cancel_comment = reason_code, comment
+    stop.save(update_fields=["cancelled_at", "cancelled_by", "cancel_reason_code", "cancel_comment", "updated_at"])
+    record_audit(tenant_id=tenant_id, user=user, action="cancel", entity=stop, old_values=old,
+                 new_values={**_stop_values(stop),
+                             "reason": lot_reasons.text(reasons.STOP_CANCEL, reason_code, comment)})
+    publish_event(tenant_id=tenant_id, event_type="production.stop_cancelled",
+                  payload={"stop_id": str(stop.id), "reason_code": reason_code})
+    return stop
