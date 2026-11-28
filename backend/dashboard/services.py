@@ -9,7 +9,9 @@ from rest_framework.exceptions import ValidationError
 from audit.services import record_audit
 from dashboard.indicators import HIGHER, THRESHOLDS
 from dashboard.models import DashboardThreshold, ProductionTarget
+from dashboard import reasons
 from events.services import publish_event
+from lots import reasons as lot_reasons
 
 
 def _values(row):
@@ -64,10 +66,11 @@ def reset_threshold(*, tenant_id, user, code):
 
 
 @transaction.atomic
-def set_targets(*, tenant_id, user, article, year, months):
+def set_targets(*, tenant_id, user, article, year, months, reason_code="", reason_comment=""):
     """Cibles d'un article pour les 12 mois d'une annee. `months` = 12 valeurs (unite de base) ou None (pas de cible).
 
-    Une cible changee ou retiree passe au journal d'audit (ancienne et nouvelle valeur), avec un evenement.
+    Une cible changee ou retiree passe au journal d'audit (ancienne et nouvelle valeur), avec un evenement. Changer
+    ou retirer une cible deja saisie demande un motif dans une liste fermee (la premiere saisie n'en demande pas).
     """
     from dashboard.product_selectors import target_articles
 
@@ -90,6 +93,14 @@ def set_targets(*, tenant_id, user, article, year, months):
         wanted[datetime.date(int(year), index + 1, 1)] = value.quantize(Decimal("0.001"))
     existing = {t.month: t for t in ProductionTarget.objects.select_for_update().filter(article=article,
                                                                                          month__year=year)}
+    touched = [m for m, row in existing.items() if wanted.get(m) != row.quantity]
+    reason = ""
+    if touched:
+        if not reason_code:
+            raise ValidationError({"reason_code": ["Une cible déjà saisie change : choisissez le motif."]})
+        reason_code, reason_comment = lot_reasons.check(reasons.TARGET_CHANGE, reason_code, reason_comment,
+                                                        field="reason_code")
+        reason = lot_reasons.text(reasons.TARGET_CHANGE, reason_code, reason_comment)
     changed = []
     for month in sorted(set(existing) | set(wanted)):
         row, value = existing.get(month), wanted.get(month)
@@ -97,20 +108,21 @@ def set_targets(*, tenant_id, user, article, year, months):
             row = ProductionTarget.objects.create(tenant_id=tenant_id, article=article, month=month, quantity=value)
             record_audit(tenant_id=tenant_id, user=user, action="create", entity=row, new_values=_target_values(row))
         elif value is None:
-            record_audit(tenant_id=tenant_id, user=user, action="delete", entity=row, old_values=_target_values(row))
+            record_audit(tenant_id=tenant_id, user=user, action="delete", entity=row, old_values=_target_values(row),
+                         new_values={"reason_code": reason_code, "reason": reason})
             row.delete()
         elif row.quantity != value:
             old = _target_values(row)
             row.quantity = value
             row.save(update_fields=["quantity", "updated_at"])
             record_audit(tenant_id=tenant_id, user=user, action="update", entity=row, old_values=old,
-                         new_values=_target_values(row))
+                         new_values={**_target_values(row), "reason_code": reason_code, "reason": reason})
         else:
             continue
         changed.append(month.isoformat())
     if changed:
         publish_event(tenant_id=tenant_id, event_type="dashboard.targets_changed",
-                      payload={"article_id": str(article.id), "months": changed})
+                      payload={"article_id": str(article.id), "months": changed, "reason_code": reason_code})
 
 
 def _target_values(row):

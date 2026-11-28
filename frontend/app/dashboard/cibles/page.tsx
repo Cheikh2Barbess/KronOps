@@ -2,15 +2,15 @@
 
 // Cibles de production (Sollwert), saisies par l'Admin : une quantite par produit et par mois, en unite de base.
 // Le tableau de bord les compare au reel (Istwert) tire des declarations d'etape. Case vide = pas de cible ce mois-la.
-// Chaque changement passe au journal d'audit.
+// Chaque changement passe au journal d'audit, avec un motif choisi dans une liste quand une cible deja saisie change.
 import Link from "next/link";
 import { FormEvent, useCallback, useEffect, useState } from "react";
 import { useSession } from "@/components/AppShell";
-import { errorText, unitLabel } from "@/components/Codes";
+import { CodePicker, Option, errorText, unitLabel } from "@/components/Codes";
 import { api } from "@/lib/api";
 
 type Row = { id: string; code: string; name: string; unit: string; article_type: string; product: string; months: (number | null)[] };
-type Payload = { year: number; months: string[]; articles: Row[] };
+type Payload = { year: number; months: string[]; articles: Row[]; change_reasons: Option[] };
 
 const TYPE_LABELS: Record<string, string> = { semi_fini: "semi-fini", fini: "produit fini" };
 
@@ -38,7 +38,7 @@ export default function Cibles() {
       return v === "" ? null : v;
     });
     try {
-      const saved = await api<Row>("dashboard/targets/", { method: "PUT", body: JSON.stringify({ article: row.id, year, months }) });
+      const saved = await api<Row>("dashboard/targets/", { method: "PUT", body: JSON.stringify({ article: row.id, year, months, reason_code: form.get("reason_code") || "", reason_comment: form.get("reason_comment") || "" }) });
       setData((d) => (d ? { ...d, articles: d.articles.map((a) => (a.id === saved.id ? saved : a)) } : d));
       setMessage(`Cibles ${year} de « ${row.name} » enregistrées.`);
     } catch (e) {
@@ -93,6 +93,12 @@ export default function Cibles() {
           </tbody>
         </table>
       </div>
+      {isAdmin && row.months.some((v) => v !== null) && (
+        <p style={{ margin: "8px 0 0", display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
+          <span className="muted">Si vous changez ou retirez une cible déjà saisie :</span>
+          <CodePicker options={data!.change_reasons} label="Motif" name="reason_code" commentName="reason_comment" required={false} />
+        </p>
+      )}
     </form>
   );
   return (

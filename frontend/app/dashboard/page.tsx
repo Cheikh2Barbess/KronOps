@@ -34,6 +34,8 @@ type Tile = {
   previous: number | null;
   // Ecran qui explique la tuile (ex. l'ecart a la cible : produit, equipement, arret).
   link: { href: string; label: string } | null;
+  // Derniere saisie qui nourrit la tuile : les chiffres sont-ils frais ?
+  last_entry: { at: string; by: string | null; what: string } | null;
 };
 type Dashboard = { role: string; days: number; periods: number[]; generated_at: string; tiles: Tile[] };
 
@@ -51,6 +53,10 @@ const ROLE_TITLES: Record<string, string> = {
 const TILE_ICONS: Record<string, IconName> = {
   alerts: "bell-ring",
   actions: "list-checks",
+  coverage: "package",
+  mttr: "wrench",
+  suppliers: "users",
+  data_quality: "file-check",
   targets: "target",
   products: "chart-column",
   line_stops: "circle-pause",
@@ -121,6 +127,25 @@ function Trend({ tile, days }: { tile: Tile; days: number }) {
   );
 }
 
+// Fraicheur : « il y a 5 min », « il y a 3 h », « il y a 2 j ». Plus de 2 jours sans saisie : signale.
+function ago(iso: string): string {
+  const minutes = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 60000));
+  if (minutes < 60) return `il y a ${minutes} min`;
+  if (minutes < 48 * 60) return `il y a ${Math.round(minutes / 60)} h`;
+  return `il y a ${Math.round(minutes / 1440)} j`;
+}
+const stale = (iso: string) => Date.now() - new Date(iso).getTime() > 48 * 3600 * 1000;
+
+function Freshness({ entry }: { entry: Tile["last_entry"] }) {
+  if (!entry) return <span className="tile-fresh">Aucune saisie</span>;
+  return (
+    <span className={stale(entry.at) ? "tile-fresh tile-fresh-old" : "tile-fresh"} title={`${entry.what}, le ${new Date(entry.at).toLocaleString("fr-FR")}${entry.by ? `, par ${entry.by}` : ""}`}>
+      <Icon name="clock" size={13} />
+      Saisie {ago(entry.at)}
+    </span>
+  );
+}
+
 function TileCard({ tile, days, onOpen }: { tile: Tile; days: number; onOpen: () => void }) {
   const firstLine = tile.detail.find((d) => d.kind === "line");
   return (
@@ -141,7 +166,7 @@ function TileCard({ tile, days, onOpen }: { tile: Tile; days: number; onOpen: ()
       )}
       <span className="tile-foot">
         <span>{tile.scope === "compare" ? "Jour, semaine, mois, saison" : tile.scope === "now" ? (tile.code === "targets" ? "Mois en cours, à date" : "État actuel, sans comparaison") : PERIOD_LABELS[days] || `${days} jours`}</span>
-        <Icon name="maximize-2" size={14} />
+        <Freshness entry={tile.last_entry} />
       </span>
     </button>
   );
@@ -181,6 +206,10 @@ function FullScreen({ tile, days, onClose }: { tile: Tile; days: number; onClose
           {tile.subtitle && <p style={{ margin: "12px 0 0", color: "var(--text-2)" }}>{tile.subtitle}</p>}
           <p className="overlay-meta">
             {tile.scope === "compare" ? "Comparaisons fixes, indépendantes de la période choisie." : tile.scope === "now" ? "État actuel." : `Période : ${PERIOD_LABELS[days] || `${days} jours`}.`} Source : {tile.source}
+            <br />
+            {tile.last_entry
+              ? `Dernière saisie : ${tile.last_entry.what.toLowerCase()} le ${new Date(tile.last_entry.at).toLocaleString("fr-FR", { dateStyle: "short", timeStyle: "short" })}${tile.last_entry.by ? `, par ${tile.last_entry.by}` : ""}.`
+              : "Aucune saisie ne nourrit encore cet indicateur."}
             {tile.threshold && (
               <>
                 <br />

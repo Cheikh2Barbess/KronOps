@@ -206,6 +206,12 @@ def test_dashboards_tell_the_dried_fruit_story(demo):
     blocked = {a["title"]: a["open_action"] for a in alerts if a["code"] == "blocked_lot"}
     assert len(blocked) == 2  # comme la tuile : un lot bloque sans stock n'est pas une alerte
     assert sum(1 for v in blocked.values() if v is None) == 1  # l'ananas bloque reste a traiter en direct
+    # Fiabilite : la double saisie de la derniere livraison est signalee, les pannes de la saison sont longues
+    # (MTTR au-dessus de 4 h), et chaque tuile dit quand a eu lieu sa derniere saisie.
+    assert boss["data_quality"]["value"] == 1 and boss["data_quality"]["status"] == "warn"
+    assert boss["mttr"]["status"] == "bad" and boss["mttr"]["value"] > 4
+    assert boss["coverage"]["status"] in ("warn", "bad") and boss["suppliers"]["value"] >= 10
+    assert boss["received"]["last_entry"]["by"]
     production = tiles("demo.production")
     assert production["late_entries"]["status"] == "ok" and production["late_entries"]["value"] < 3
     assert production["late_entries"]["threshold"]["is_default"] is False  # seuil propre a l'entreprise

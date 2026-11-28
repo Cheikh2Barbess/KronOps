@@ -30,6 +30,9 @@ class TargetWriteSerializer(serializers.Serializer):
     year = serializers.IntegerField(min_value=2000, max_value=2100)
     months = serializers.ListField(child=serializers.CharField(allow_null=True, allow_blank=True), min_length=12,
                                    max_length=12, help_text="12 cibles en unité de base, vide ou null : pas de cible")
+    reason_code = serializers.CharField(required=False, allow_blank=True, default="",
+                                        help_text="Motif obligatoire quand une cible déjà saisie change")
+    reason_comment = serializers.CharField(required=False, allow_blank=True, default="")
 
 
 class TargetQuerySerializer(serializers.Serializer):

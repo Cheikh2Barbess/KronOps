@@ -37,7 +37,9 @@ def set_month_target(client, article, kg, when=None):
     when = when or timezone.localdate()
     months = [None] * 12
     months[when.month - 1] = kg
-    return client.put(TARGETS, {"article": str(article.id), "year": when.year, "months": months}, format="json")
+    # Motif envoye a chaque fois : ignore a la premiere saisie, exige quand une cible deja saisie change.
+    return client.put(TARGETS, {"article": str(article.id), "year": when.year, "months": months,
+                                "reason_code": "prevision_revue"}, format="json")
 
 
 def tab(detail, label):
@@ -69,8 +71,8 @@ def test_target_can_be_removed_and_must_be_positive(client_a, orchard):
     assert set_month_target(client_a, orchard["dried"], "-5").status_code == 400
     assert set_month_target(client_a, orchard["dried"], "200").status_code == 200
     year = timezone.localdate().year
-    cleared = client_a.put(TARGETS, {"article": str(orchard["dried"].id), "year": year, "months": [None] * 12},
-                           format="json")
+    cleared = client_a.put(TARGETS, {"article": str(orchard["dried"].id), "year": year, "months": [None] * 12,
+                                     "reason_code": "erreur_saisie"}, format="json")
     assert cleared.status_code == 200
     assert all(v is None for v in cleared.json()["months"])
 
