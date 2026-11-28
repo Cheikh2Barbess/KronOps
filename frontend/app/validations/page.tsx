@@ -164,7 +164,7 @@ function LotPanel({ lot, me, reasons, onChanged }: { lot: Lot; me: Me; reasons: 
   }
 
   return (
-    <div style={{ border: "1px solid #888", padding: 12, margin: "8px 0" }}>
+    <div style={{ border: "1px solid var(--line)", borderRadius: "var(--radius)", background: "var(--surface)", padding: 12, margin: "8px 0" }}>
       <p>
         <strong>{lot.code}</strong> · {lot.article_code} {lot.article_name} · lot fournisseur {lot.supplier_lot_code || "(aucun)"} ·{" "}
         <LotStatusBadge status={lot.status} />
@@ -192,7 +192,7 @@ function LotPanel({ lot, me, reasons, onChanged }: { lot: Lot; me: Me; reasons: 
         <form onSubmit={onBlock} style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }} aria-label="Bloquer">
           <ReasonPicker options={reasons.block || []} />
           <button type="submit">Bloquer ce lot</button>
-          <span style={{ color: "#555" }}>Le lot entier est bloqué : aucune quantité à saisir.</span>
+          <span style={{ color: "var(--muted)" }}>Le lot entier est bloqué : aucune quantité à saisir.</span>
         </form>
       )}
       {mode === "request" && canRequest && (
@@ -213,7 +213,7 @@ function LotPanel({ lot, me, reasons, onChanged }: { lot: Lot; me: Me; reasons: 
               <input name="quantity" required inputMode="decimal" style={{ width: 100 }}
                 placeholder={action === "adjust" ? "ex. -2,5 ou 3" : "ex. 2,5"} />{" "}
               <strong>{unit}</strong>{" "}
-              <span style={{ color: "#555" }}>
+              <span style={{ color: "var(--muted)" }}>
                 (sur {withUnit(lot.balance, lot.base_unit)} en stock{action === "adjust" ? ", négatif pour retirer, positif pour ajouter" : ""})
               </span>
             </label>
@@ -247,7 +247,7 @@ function ApprovalRow({ a, me, reasons, onChanged }: { a: Approval; me: Me; reaso
   }
 
   return (
-    <tr style={{ borderTop: "1px solid #ddd", verticalAlign: "top" }}>
+    <tr style={{ verticalAlign: "top" }}>
       <td>{when(a.created_at)}</td>
       <td>{ACTIONS[a.action] || a.action}</td>
       <td>
@@ -255,7 +255,7 @@ function ApprovalRow({ a, me, reasons, onChanged }: { a: Approval; me: Me; reaso
         <br />
         <small>{a.article_name}</small>
       </td>
-      <td>{a.quantity !== null ? withUnit(a.quantity, a.base_unit) : ""}</td>
+      <td className="num">{a.quantity !== null ? withUnit(a.quantity, a.base_unit) : ""}</td>
       <td>
         {a.reason_label}
         {a.comment && <> : {a.comment}</>}
@@ -364,7 +364,7 @@ export default function Validations() {
         autre d&apos;un rôle différent valide. Un déblocage passe toujours par la Qualité. Une décision prise est définitive :
         on la corrige par une nouvelle action (rebloquer le lot, nouvelle demande). Vous êtes <strong>{me.username}</strong> ({ROLES[me.role] || me.role}).
       </p>
-      {message && <p style={{ background: "#e8f5e9", padding: 8 }}>{message}</p>}
+      {message && <p className="notice" role="status">{message}</p>}
       {error && <p role="alert">{error}</p>}
 
       <h2>Bloquer un lot ou faire une demande</h2>
@@ -393,13 +393,13 @@ export default function Validations() {
       {approvals.length === 0 ? (
         <p>Aucune demande.</p>
       ) : (
-        <table cellPadding={4} style={{ borderCollapse: "collapse", width: "100%" }}>
+        <table cellPadding={4} style={{ width: "100%" }}>
           <thead>
             <tr style={{ textAlign: "left" }}>
               <th>Date</th>
               <th>Action</th>
               <th>Lot</th>
-              <th>Quantité</th>
+              <th className="num">Quantité</th>
               <th>Motif</th>
               <th>Demandé par</th>
               <th>Statut</th>

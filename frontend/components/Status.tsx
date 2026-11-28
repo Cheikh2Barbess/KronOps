@@ -3,20 +3,23 @@
 // Code couleur commun a tout Tracalys : vert (OK), jaune (a surveiller), rouge (non OK), gris (information).
 // Jamais la couleur seule : chaque etat a aussi une icone de forme differente et un mot (lisible par un daltonien
 // et a l'impression en noir et blanc).
+import { Icon, IconName } from "@/components/Icon";
+
 export type Status = "ok" | "warn" | "bad" | "info";
 
-export const STATUS_META: Record<Status, { label: string; icon: string; fg: string; bg: string; border: string }> = {
-  ok: { label: "OK", icon: "✓", fg: "#1b5e20", bg: "#e8f5e9", border: "#2e7d32" },
-  warn: { label: "À surveiller", icon: "!", fg: "#6d4500", bg: "#fff4d6", border: "#c98a00" },
-  bad: { label: "Non OK", icon: "✕", fg: "#a3001b", bg: "#fdecea", border: "#c62828" },
-  info: { label: "Information", icon: "i", fg: "#374151", bg: "#eef1f4", border: "#9ca3af" },
+// fg : texte (contraste AA sur bg). solid : icone et barres.
+export const STATUS_META: Record<Status, { label: string; icon: IconName; fg: string; bg: string; border: string }> = {
+  ok: { label: "OK", icon: "circle-check", fg: "#085d3a", bg: "#ecfdf3", border: "#079455" },
+  warn: { label: "À surveiller", icon: "triangle-alert", fg: "#7a2e0e", bg: "#fffaeb", border: "#dc6803" },
+  bad: { label: "Non OK", icon: "octagon-x", fg: "#912018", bg: "#fef3f2", border: "#d92d20" },
+  info: { label: "Information", icon: "info", fg: "#344054", bg: "#f2f4f7", border: "#667085" },
 };
 
-export function StatusIcon({ status }: { status: Status }) {
+export function StatusIcon({ status, size = 15 }: { status: Status; size?: number }) {
   const m = STATUS_META[status] || STATUS_META.info;
   return (
-    <span className="status-icon" aria-hidden="true" style={{ background: m.border }}>
-      {m.icon}
+    <span className="status-icon" aria-hidden="true" style={{ color: m.border }}>
+      <Icon name={m.icon} size={size} />
     </span>
   );
 }
@@ -25,8 +28,8 @@ export function StatusIcon({ status }: { status: Status }) {
 export function StatusBadge({ status, text, title }: { status: Status; text?: string; title?: string }) {
   const m = STATUS_META[status] || STATUS_META.info;
   return (
-    <span className="status-badge" title={title} style={{ color: m.fg, background: m.bg, borderColor: m.border }}>
-      <StatusIcon status={status} />
+    <span className="status-badge" title={title} style={{ color: m.fg, background: m.bg }}>
+      <StatusIcon status={status} size={14} />
       {text || m.label}
     </span>
   );

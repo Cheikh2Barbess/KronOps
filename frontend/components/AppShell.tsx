@@ -7,6 +7,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { ReactNode, createContext, useContext, useEffect, useRef, useState } from "react";
+import { Icon, IconName } from "@/components/Icon";
 import { api } from "@/lib/api";
 
 export type Me = { username: string; first_name?: string; last_name?: string; role: string; tenant_name: string };
@@ -15,6 +16,25 @@ export type Me = { username: string; first_name?: string; last_name?: string; ro
 function displayName(me: Me) {
   return [me.first_name, me.last_name].map((s) => (s || "").trim()).filter(Boolean).join(" ") || me.username;
 }
+// Initiales de l'avatar : premiere lettre des deux premiers mots (« Awa Bamba » donne « AB »).
+function initials(name: string) {
+  return name
+    .split(/[\s.]+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((w) => w[0].toUpperCase())
+    .join("");
+}
+
+// Pictogramme de la marque : une feuille sur fond vert (Lucide « leaf »), en attendant un vrai logo.
+function BrandMark() {
+  return (
+    <span className="brand-mark" aria-hidden="true">
+      <Icon name="leaf" size={18} />
+    </span>
+  );
+}
+
 type Health = { status: string; database: string };
 type PipelineBlock = { steps: { code: string; is_active: boolean }[] };
 
@@ -38,25 +58,25 @@ const ROLE_LABELS: Record<string, string> = {
   lecture: "Lecture",
 };
 
-type NavItem = { href: string; label: string; hint: string; roles?: string[]; module?: string };
+type NavItem = { href: string; label: string; hint: string; icon: IconName; roles?: string[]; module?: string };
 
 // L'ordre suit le parcours du produit. Les roles reprennent ceux de l'ancien accueil, sans changement.
 // « Tableau de bord » vient en tete : c'est l'ecran ouvert par defaut a la connexion (contenu selon le role).
 const NAV: NavItem[] = [
-  { href: "/dashboard", label: "Tableau de bord", hint: "Indicateurs de votre rôle, en vert, jaune ou rouge" },
-  { href: "/referentiels", label: "Référentiels", hint: "Articles, fournisseurs, clients, parcelles, sites et équipements" },
-  { href: "/pipeline", label: "Pipeline", hint: "Les 8 blocs, du producteur au conteneur" },
-  { href: "/tracabilite", label: "Traçabilité", hint: "Recherche amont et aval", roles: ["admin", "qualite", "production", "lecture"] },
-  { href: "/receptions", label: "Réceptions", hint: "Enregistrer une livraison", roles: ["admin", "qualite", "production", "operateur"] },
-  { href: "/production", label: "Production", hint: "Déclarer une étape (mûrissement, séchage, cartons, palette)", roles: ["admin", "production", "operateur"] },
-  { href: "/transferts", label: "Transferts", hint: "Envoyer un lot vers une autre usine", roles: ["admin", "production", "operateur"], module: "transfert" },
-  { href: "/qualite", label: "Contrôle qualité", hint: "Contrôle qualité d'un lot", roles: ["admin", "qualite"] },
-  { href: "/expeditions", label: "Expéditions", hint: "Conteneur, plomb, certificat d'inspection", roles: ["admin", "production"], module: "expedition" },
-  { href: "/bilan", label: "Bilan matière", hint: "Rendements et écarts", roles: ["admin", "qualite", "production", "lecture"] },
-  { href: "/rappel", label: "Rappel", hint: "Rapport de rappel depuis un carton, une palette ou un conteneur", roles: ["admin", "qualite", "production", "lecture"] },
-  { href: "/validations", label: "Validations", hint: "Déblocage, destruction, rebut, ajustement", roles: ["admin", "qualite", "production", "operateur"] },
-  { href: "/journal", label: "Journal d'audit", hint: "Qui a fait quoi, et quand", roles: ["admin", "qualite"] },
-  { href: "/utilisateurs", label: "Utilisateurs", hint: "Créer, modifier, désactiver", roles: ["admin"] },
+  { href: "/dashboard", icon: "layout-dashboard", label: "Tableau de bord", hint: "Indicateurs de votre rôle, en vert, jaune ou rouge" },
+  { href: "/referentiels", icon: "library-big", label: "Référentiels", hint: "Articles, fournisseurs, clients, parcelles, sites et équipements" },
+  { href: "/pipeline", icon: "workflow", label: "Pipeline", hint: "Les 8 blocs, du producteur au conteneur" },
+  { href: "/tracabilite", icon: "scan-search", label: "Traçabilité", hint: "Recherche amont et aval", roles: ["admin", "qualite", "production", "lecture"] },
+  { href: "/receptions", icon: "truck", label: "Réceptions", hint: "Enregistrer une livraison", roles: ["admin", "qualite", "production", "operateur"] },
+  { href: "/production", icon: "factory", label: "Production", hint: "Déclarer une étape (mûrissement, séchage, cartons, palette)", roles: ["admin", "production", "operateur"] },
+  { href: "/transferts", icon: "arrow-left-right", label: "Transferts", hint: "Envoyer un lot vers une autre usine", roles: ["admin", "production", "operateur"], module: "transfert" },
+  { href: "/qualite", icon: "clipboard-check", label: "Contrôle qualité", hint: "Contrôle qualité d'un lot", roles: ["admin", "qualite"] },
+  { href: "/expeditions", icon: "ship", label: "Expéditions", hint: "Conteneur, plomb, certificat d'inspection", roles: ["admin", "production"], module: "expedition" },
+  { href: "/bilan", icon: "scale", label: "Bilan matière", hint: "Rendements et écarts", roles: ["admin", "qualite", "production", "lecture"] },
+  { href: "/rappel", icon: "siren", label: "Rappel", hint: "Rapport de rappel depuis un carton, une palette ou un conteneur", roles: ["admin", "qualite", "production", "lecture"] },
+  { href: "/validations", icon: "stamp", label: "Validations", hint: "Déblocage, destruction, rebut, ajustement", roles: ["admin", "qualite", "production", "operateur"] },
+  { href: "/journal", icon: "scroll-text", label: "Journal d'audit", hint: "Qui a fait quoi, et quand", roles: ["admin", "qualite"] },
+  { href: "/utilisateurs", icon: "users", label: "Utilisateurs", hint: "Créer, modifier, désactiver", roles: ["admin"] },
 ];
 
 export default function AppShell({ children }: { children: ReactNode }) {
@@ -104,7 +124,10 @@ export default function AppShell({ children }: { children: ReactNode }) {
     return (
       <SessionContext.Provider value={session}>
         <div className="shell-guest">
-          <Link href="/" className="brand brand-guest">Tracalys</Link>
+          <Link href="/" className="brand brand-guest">
+            <BrandMark />
+            Tracalys
+          </Link>
           <p className="guest-status">
             Service : <strong>{health ? health.status : "..."}</strong>, base de données : <strong>{health ? health.database : "..."}</strong>
           </p>
@@ -122,18 +145,29 @@ export default function AppShell({ children }: { children: ReactNode }) {
       <div className="shell" style={{ ["--topbar-h" as string]: `${topbarHeight}px` }}>
         <header ref={topbar} className="topbar no-print">
           <Link href="/" className="brand">
+            <BrandMark />
             Tracalys
           </Link>
-          <span className="company">{me.tenant_name}</span>
+          <span className="company">
+            <Icon name="building-2" size={16} />
+            {me.tenant_name}
+          </span>
           <span className="spacer" />
           <span className="status" title={health ? `Service : ${health.status}, base de données : ${health.database}` : "Vérification..."}>
             <span className={`dot ${health ? (healthy ? "ok" : "ko") : ""}`} />
             {health ? (healthy ? "Service et base OK" : "Service ou base en défaut") : "..."}
           </span>
           <span className="user">
-            <strong>{displayName(me)}</strong> <span className="role">{ROLE_LABELS[me.role] || me.role}</span>
+            <span className="avatar" aria-hidden="true">
+              {initials(displayName(me))}
+            </span>
+            <span className="user-text">
+              <strong>{displayName(me)}</strong>
+              <span className="role">{ROLE_LABELS[me.role] || me.role}</span>
+            </span>
           </span>
           <button type="button" className="logout" onClick={onLogout}>
+            <Icon name="log-out" size={16} />
             Se déconnecter
           </button>
         </header>
@@ -142,6 +176,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
             const active = pathname === i.href || pathname.startsWith(`${i.href}/`);
             return (
               <Link key={i.href} href={i.href} title={i.hint} className={`navbtn${active ? " active" : ""}`} aria-current={active ? "page" : undefined}>
+                <Icon name={i.icon} size={18} />
                 {i.label}
               </Link>
             );

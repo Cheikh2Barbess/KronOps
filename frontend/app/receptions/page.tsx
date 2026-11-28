@@ -185,7 +185,7 @@ function ReceptionForm({ options, onDone }: { options: Options; onDone: (lot: Cr
 
   const row = { display: "flex", flexWrap: "wrap" as const, gap: 8, alignItems: "center" };
   return (
-    <form onSubmit={onSubmit} style={{ display: "grid", gap: 12, maxWidth: 760, border: "1px solid #888", padding: 12 }}>
+    <form onSubmit={onSubmit} style={{ display: "grid", gap: 12, maxWidth: 760, border: "1px solid var(--line)", borderRadius: "var(--radius)", background: "var(--surface)", padding: 12 }}>
       {options.sites.length > 1 && (
         <label>
           Site de réception{" "}
@@ -254,7 +254,7 @@ function ReceptionForm({ options, onDone }: { options: Options; onDone: (lot: Cr
               ))}
             </select>
             {qty > 0 && factor > 0 && (
-              <span style={{ color: "#555" }}>
+              <span style={{ color: "var(--muted)" }}>
                 soit <strong>{withUnit(qty * factor, article.base_unit)}</strong> en stock
               </span>
             )}
@@ -293,7 +293,7 @@ function ReceptionForm({ options, onDone }: { options: Options; onDone: (lot: Cr
           )}
           <label>
             4. Numéro de lot du fournisseur <input name="supplier_lot_code" style={{ width: 200 }} />{" "}
-            <small style={{ color: "#555" }}>(tel qu&apos;écrit sur l&apos;étiquette, si le fournisseur en donne un)</small>
+            <small style={{ color: "var(--muted)" }}>(tel qu&apos;écrit sur l&apos;étiquette, si le fournisseur en donne un)</small>
           </label>
           <div style={row}>
             <span>
@@ -316,7 +316,7 @@ function ReceptionForm({ options, onDone }: { options: Options; onDone: (lot: Cr
           {needsTemperature && (
             <label>
               6. Température à réception <input name="temperature_c" required inputMode="decimal" style={{ width: 70 }} /> °C{" "}
-              <small style={{ color: "#555" }}>(article {article.storage === "congele" ? "congelé" : "réfrigéré"})</small>
+              <small style={{ color: "var(--muted)" }}>(article {article.storage === "congele" ? "congelé" : "réfrigéré"})</small>
             </label>
           )}
           <fieldset style={{ border: "none", padding: 0, margin: 0 }}>
@@ -370,7 +370,7 @@ function ReceptionRow({ row, reasons, onChanged }: { row: Row; reasons: Option[]
   if (row.reversed) state = `Annulée : ${row.reversal_reason}`;
   else if (row.lot_status === "bloque" && row.block_reason) state = `Bloqué : ${row.block_reason}`;
   return (
-    <tr style={{ borderTop: "1px solid #ddd", verticalAlign: "top" }}>
+    <tr style={{ verticalAlign: "top" }}>
       <td>
         {when(row.occurred_at)}
         <br />
@@ -398,7 +398,7 @@ function ReceptionRow({ row, reasons, onChanged }: { row: Row; reasons: Option[]
           </>
         )}
       </td>
-      <td>{withUnit(row.quantity, row.base_unit)}</td>
+      <td className="num">{withUnit(row.quantity, row.base_unit)}</td>
       <td>
         <Person username={row.username} />
       </td>
@@ -469,7 +469,7 @@ export default function Receptions() {
         Enregistrez chaque livraison à son arrivée. Tracalys crée le lot, calcule la quantité dans l&apos;unité de l&apos;article et
         démarre la traçabilité. Vous êtes <strong>{me.username}</strong>.
       </p>
-      {message && <p style={{ background: "#e8f5e9", padding: 8, fontSize: "1.1em" }}>{message}</p>}
+      {message && <p className="notice" role="status">{message}</p>}
       {error && <p role="alert">{error}</p>}
       <h2>Enregistrer une livraison</h2>
       {options === null ? (
@@ -483,20 +483,20 @@ export default function Receptions() {
         <ReceptionForm key={formKey} options={options} onDone={created} />
       )}
       <h2>{me.role === "operateur" ? "Mes dernières réceptions" : "Dernières réceptions"}</h2>
-      <p style={{ color: "#555" }}>
+      <p style={{ color: "var(--muted)" }}>
         Une erreur ? Annulez la réception tant que le lot n&apos;a pas servi, puis enregistrez-la à nouveau. Rien n&apos;est effacé :
         l&apos;annulation est tracée au journal.
       </p>
       {rows.length === 0 ? (
         <p>Aucune réception.</p>
       ) : (
-        <table style={{ borderCollapse: "collapse", width: "100%" }}>
+        <table style={{ width: "100%" }}>
           <thead>
             <tr style={{ textAlign: "left" }}>
               <th>Date</th>
               <th>Lot</th>
               <th>Fournisseur</th>
-              <th>Quantité</th>
+              <th className="num">Quantité</th>
               <th>Par</th>
               <th>État</th>
               <th></th>

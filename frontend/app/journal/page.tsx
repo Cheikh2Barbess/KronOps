@@ -426,7 +426,7 @@ export default function Journal() {
       ) : (
         <>
           <p>{page.count} entrée(s)</p>
-          <table cellPadding={4} style={{ borderCollapse: "collapse", width: "100%" }}>
+          <table cellPadding={4} style={{ width: "100%" }}>
             <thead>
               <tr style={{ textAlign: "left" }}>
                 <th>Date</th>
@@ -438,7 +438,7 @@ export default function Journal() {
             </thead>
             <tbody>
               {page.results.map((e) => (
-                <tr key={e.id} style={{ borderTop: "1px solid #ddd", verticalAlign: "top" }}>
+                <tr key={e.id} style={{ verticalAlign: "top" }}>
                   <td style={{ whiteSpace: "nowrap" }}>{stamp(e.created_at)}</td>
                   <td>
                     <Person username={e.username} />

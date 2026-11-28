@@ -23,7 +23,7 @@ const KIND_COLOR: Record<string, string> = {
   transformation: "#1b5e20",
   obligatoire: "#0d47a1",
   module: "#6a1b9a",
-  prevu: "#777",
+  prevu: "var(--muted)",
 };
 
 export default function PipelinePage() {
@@ -71,7 +71,7 @@ export default function PipelinePage() {
   return (
     <main>
       <h1>Pipeline : du producteur au conteneur</h1>
-      <p style={{ maxWidth: 760, color: "#555" }}>
+      <p style={{ maxWidth: 760, color: "var(--muted)" }}>
         Les 8 blocs du pipeline des fruits séchés export. Cochez ce que votre entreprise utilise. Une étape de production
         décochée n&apos;est plus proposée à la déclaration. Un écran facultatif décoché disparaît de l&apos;accueil et
         l&apos;API le refuse. Les écrans de traçabilité restent toujours actifs. Les étapes « prévues » ne sont pas encore
@@ -86,7 +86,7 @@ export default function PipelinePage() {
         ))}
       </p>
       {blocks.map((b) => (
-        <section key={b.number} style={{ border: "1px solid #888", padding: "8px 12px", margin: "10px 0", maxWidth: 760 }}>
+        <section key={b.number} style={{ border: "1px solid var(--line)", borderRadius: "var(--radius)", background: "var(--surface)", padding: "8px 12px", margin: "10px 0", maxWidth: 760 }}>
           <h2 style={{ fontSize: "1.1em", margin: "4px 0 8px" }}>
             {b.number}. {b.label}
           </h2>
@@ -116,7 +116,7 @@ export default function PipelinePage() {
           </button>
         </p>
       ) : (
-        <p style={{ color: "#555" }}>Seul l&apos;administrateur de l&apos;entreprise peut modifier le pipeline.</p>
+        <p style={{ color: "var(--muted)" }}>Seul l&apos;administrateur de l&apos;entreprise peut modifier le pipeline.</p>
       )}
       {message && <p role="status">{message}</p>}
       {error && (

@@ -93,10 +93,10 @@ export default function Expeditions() {
   return (
     <main>
       <h1>Expéditions</h1>
-      {message && <p style={{ background: "#e8f5e9", padding: 8, fontSize: "1.1em" }}>{message}</p>}
+      {message && <p className="notice" role="status">{message}</p>}
       {error && <p role="alert">{error}</p>}
       {options && (
-        <form key={formKey} onSubmit={onSubmit} style={{ display: "grid", gap: 12, border: "1px solid #888", padding: 12 }}>
+        <form key={formKey} onSubmit={onSubmit} style={{ display: "grid", gap: 12, border: "1px solid var(--line)", borderRadius: "var(--radius)", background: "var(--surface)", padding: 12 }}>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 12 }}>
             <label>
               Client{" "}
@@ -132,12 +132,12 @@ export default function Expeditions() {
           {options.lots.length === 0 ? (
             <p>Aucun lot expédiable (produit fini ou semi-fini disponible).</p>
           ) : (
-            <table cellPadding={4} style={{ borderCollapse: "collapse", width: "100%" }}>
+            <table cellPadding={4} style={{ width: "100%" }}>
               <thead>
                 <tr style={{ textAlign: "left" }}>
                   <th>Lot</th>
                   <th>Statut bio</th>
-                  <th>En stock</th>
+                  <th className="num">En stock</th>
                   <th>Contrôle qualité</th>
                   <th>Quantité chargée</th>
                 </tr>
@@ -147,7 +147,7 @@ export default function Expeditions() {
                   const line = lines[l.id] || { quantity: "", unit: l.conversions[0]?.unit_name || l.base_unit };
                   const set = (patch: Partial<Line>) => setLines((old) => ({ ...old, [l.id]: { ...line, ...patch } }));
                   return (
-                    <tr key={l.id} style={{ borderTop: "1px solid #ddd" }}>
+                    <tr key={l.id}>
                       <td>
                         <strong>{l.code}</strong>
                         <br />
@@ -159,7 +159,7 @@ export default function Expeditions() {
                       <td>
                         <OrganicBadge status={l.organic_status} />
                       </td>
-                      <td>{withUnit(l.balance, l.base_unit)}</td>
+                      <td className="num">{withUnit(l.balance, l.base_unit)}</td>
                       <td style={{ color: l.quality_ok ? "#1b5e20" : "#b00020" }}>
                         {l.quality_ok ? "Conforme" : "Expédition refusée"}
                         {l.quality_reason && (
@@ -228,7 +228,7 @@ export default function Expeditions() {
       {shipments.length === 0 ? (
         <p>Aucune expédition.</p>
       ) : (
-        <table cellPadding={4} style={{ borderCollapse: "collapse", width: "100%" }}>
+        <table cellPadding={4} style={{ width: "100%" }}>
           <thead>
             <tr style={{ textAlign: "left" }}>
               <th>Date</th>
@@ -240,7 +240,7 @@ export default function Expeditions() {
           </thead>
           <tbody>
             {shipments.map((s) => (
-              <tr key={s.id} style={{ borderTop: "1px solid #ddd", verticalAlign: "top" }}>
+              <tr key={s.id} style={{ verticalAlign: "top" }}>
                 <td>{day(s.shipped_at)}</td>
                 <td>
                   {s.customer_name}

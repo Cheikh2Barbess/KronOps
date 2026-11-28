@@ -42,7 +42,7 @@ const fmt = (n: string) => Number(n).toLocaleString("fr-FR", { maximumFractionDi
 
 function LotTable({ lots }: { lots: Lot[] }) {
   return (
-    <table cellPadding={4} style={{ borderCollapse: "collapse", width: "100%" }}>
+    <table cellPadding={4} style={{ width: "100%" }}>
       <thead>
         <tr style={{ textAlign: "left" }}>
           <th>Lot</th>
@@ -57,7 +57,7 @@ function LotTable({ lots }: { lots: Lot[] }) {
       </thead>
       <tbody>
         {lots.map((l) => (
-          <tr key={l.id} style={{ borderTop: "1px solid #ddd" }}>
+          <tr key={l.id}>
             <td>{l.code}</td>
             <td>
               {l.article_code} {l.article_name}
@@ -137,25 +137,25 @@ export default function Tracabilite() {
             <>
               <h2>Clients livrés</h2>
               {result.shipments && result.shipments.length ? (
-                <table cellPadding={4} style={{ borderCollapse: "collapse", width: "100%" }}>
+                <table cellPadding={4} style={{ width: "100%" }}>
                   <thead>
                     <tr style={{ textAlign: "left" }}>
                       <th>Client</th>
                       <th>Adresse</th>
                       <th>Contact</th>
                       <th>Lot</th>
-                      <th>Quantité</th>
+                      <th className="num">Quantité</th>
                       <th>Date</th>
                     </tr>
                   </thead>
                   <tbody>
                     {result.shipments.map((s) => (
-                      <tr key={s.movement_id} style={{ borderTop: "1px solid #ddd" }}>
+                      <tr key={s.movement_id}>
                         <td>{s.customer_name}</td>
                         <td>{s.customer_address}</td>
                         <td>{[s.customer_phone, s.customer_email].filter(Boolean).join(" · ")}</td>
                         <td>{s.lot_code}</td>
-                        <td>{fmt(s.quantity)}</td>
+                        <td className="num">{fmt(s.quantity)}</td>
                         <td>{new Date(s.occurred_at).toLocaleDateString("fr-FR")}</td>
                       </tr>
                     ))}

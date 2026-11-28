@@ -66,7 +66,7 @@ export default function Seuils() {
         deux seuils. Les valeurs proposées au départ sont des <strong>valeurs par défaut</strong> de Tracalys, sans norme officielle
         derrière : réglez-les selon vos objectifs. Chaque changement est inscrit au journal d&apos;audit.
       </p>
-      {message && <p style={{ background: "#e8f5e9", padding: 8 }}>{message}</p>}
+      {message && <p className="notice" role="status">{message}</p>}
       {error && <p role="alert">{error}</p>}
       <div style={{ display: "grid", gap: 12, maxWidth: 900 }}>
         {rows.map((r) => (

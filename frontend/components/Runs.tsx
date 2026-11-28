@@ -45,7 +45,7 @@ export function YieldCell({ run }: { run: Run }) {
     );
   if (run.yield_pct === null) return <span>sans objet</span>;
   const ratio = Number(run.yield_pct) > 0 ? 100 / Number(run.yield_pct) : null;
-  const color = run.yield_status === "conforme" ? "#1b5e20" : run.yield_status === "sans_reference" ? "#555" : "#b00020";
+  const color = run.yield_status === "conforme" ? "#1b5e20" : run.yield_status === "sans_reference" ? "var(--muted)" : "#b00020";
   const status: Status = run.yield_status === "conforme" ? "ok" : run.yield_status === "sans_reference" ? "info" : "bad";
   const label =
     run.yield_status === "bas" ? "sous la fourchette" : run.yield_status === "haut" ? "au-dessus de la fourchette" : run.yield_status === "conforme" ? "dans la fourchette" : "pas de référence";

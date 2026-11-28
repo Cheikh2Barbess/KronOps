@@ -97,7 +97,7 @@ export default function Transferts() {
         Un lot se consomme et s&apos;expédie depuis l&apos;usine où il se trouve. Pour l&apos;utiliser ailleurs, transférez-le. Le statut
         bio, la parcelle, la date limite et un éventuel blocage suivent le lot.
       </p>
-      {message && <p style={{ background: "#e8f5e9", padding: 8, fontSize: "1.1em" }}>{message}</p>}
+      {message && <p className="notice" role="status">{message}</p>}
       {error && (
         <p role="alert" style={{ color: "#b00020" }}>
           {error}
@@ -107,7 +107,7 @@ export default function Transferts() {
         <p>Il faut au moins deux sites pour transférer un lot. Ajoutez-les dans les référentiels.</p>
       )}
       {canTransfer && options && options.sites.length >= 2 && (
-        <form key={formKey} onSubmit={onSubmit} style={{ display: "grid", gap: 12, maxWidth: 860, border: "1px solid #888", padding: 12 }}>
+        <form key={formKey} onSubmit={onSubmit} style={{ display: "grid", gap: 12, maxWidth: 860, border: "1px solid var(--line)", borderRadius: "var(--radius)", background: "var(--surface)", padding: 12 }}>
           <label>
             <strong>1. Lot</strong>{" "}
             <select value={lotId} onChange={(e) => setLotId(e.target.value)} required style={{ ...big, maxWidth: 600 }}>
@@ -167,19 +167,19 @@ export default function Transferts() {
       {rows.length === 0 ? (
         <p>Aucun transfert.</p>
       ) : (
-        <table cellPadding={4} style={{ borderCollapse: "collapse", width: "100%" }}>
+        <table cellPadding={4} style={{ width: "100%" }}>
           <thead>
             <tr style={{ textAlign: "left" }}>
               <th>Date</th>
               <th>Lot</th>
-              <th>Quantité</th>
+              <th className="num">Quantité</th>
               <th>De</th>
               <th>Vers</th>
             </tr>
           </thead>
           <tbody>
             {rows.map((t) => (
-              <tr key={t.id} style={{ borderTop: "1px solid #ddd", verticalAlign: "top" }}>
+              <tr key={t.id} style={{ verticalAlign: "top" }}>
                 <td>
                   {when(t.occurred_at)}
                   <br />
@@ -190,7 +190,7 @@ export default function Transferts() {
                   <br />
                   <small>{t.whole_lot ? "lot entier" : `partie du lot ${t.source_lot_code}`} · {t.article_name}</small>
                 </td>
-                <td>{withUnit(t.quantity, t.base_unit)}</td>
+                <td className="num">{withUnit(t.quantity, t.base_unit)}</td>
                 <td>{t.from_site_name || "sans site"}</td>
                 <td>{t.to_site_name}</td>
               </tr>

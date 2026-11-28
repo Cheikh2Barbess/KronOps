@@ -58,7 +58,7 @@ type Report = {
   summary: { producers: number; parcels: number; affected_lots: number; lots_in_stock: number; customers: number; containers: number };
 };
 
-const table = { borderCollapse: "collapse" as const, width: "100%" };
+const table = { width: "100%" };
 
 function QC({ check }: { check: Check | null }) {
   if (!check) return <StatusBadge status="warn" text="Aucun contrôle" />;
@@ -84,7 +84,7 @@ function LotRows({ lots, stock = false }: { lots: Lot[]; stock?: boolean }) {
       </thead>
       <tbody>
         {lots.map((l) => (
-          <tr key={l.id} style={{ borderTop: "1px solid #ddd" }}>
+          <tr key={l.id}>
             <td>
               <strong>{l.code}</strong>
             </td>
@@ -147,7 +147,7 @@ export default function Rappel() {
           <p>
             Rapport du {when(new Date().toISOString())} pour <strong>{report.container ? `le conteneur ${report.container}` : report.search}</strong>.
           </p>
-          <p style={{ fontSize: "1.1em", background: "#f3f3f3", padding: 8 }}>
+          <p className="notice notice-neutral">
             {report.summary.parcels} parcelle(s) de {report.summary.producers} producteur(s) · {report.summary.affected_lots} lot(s) dans le
             périmètre · <strong>{report.summary.lots_in_stock} lot(s) encore en stock à bloquer</strong> · {report.summary.customers}{" "}
             client(s) livré(s) · {report.summary.containers} conteneur(s)
@@ -162,12 +162,12 @@ export default function Rappel() {
                 <th>Parcelle</th>
                 <th>Statut bio</th>
                 <th>Reçu le</th>
-                <th>Quantité reçue</th>
+                <th className="num">Quantité reçue</th>
               </tr>
             </thead>
             <tbody>
               {raw.map((r) => (
-                <tr key={r.id} style={{ borderTop: "1px solid #ddd" }}>
+                <tr key={r.id}>
                   <td>
                     {r.code}
                     <br />
@@ -182,7 +182,7 @@ export default function Rappel() {
                     <OrganicBadge status={r.organic_status} />
                   </td>
                   <td>{r.received_at ? when(r.received_at) : ""}</td>
-                  <td>{r.received_quantity ? withUnit(r.received_quantity, r.base_unit) : ""}</td>
+                  <td className="num">{r.received_quantity ? withUnit(r.received_quantity, r.base_unit) : ""}</td>
                 </tr>
               ))}
             </tbody>
@@ -206,7 +206,7 @@ export default function Rappel() {
             </thead>
             <tbody>
               {report.runs.map((r) => (
-                <tr key={r.id} style={{ borderTop: "1px solid #ddd", verticalAlign: "top" }}>
+                <tr key={r.id} style={{ verticalAlign: "top" }}>
                   <td>{when(r.ended_at)}</td>
                   <td>
                     {r.step_label}
@@ -245,14 +245,14 @@ export default function Rappel() {
                   <th>Client</th>
                   <th>Contact</th>
                   <th>Lot</th>
-                  <th>Quantité</th>
+                  <th className="num">Quantité</th>
                   <th>Conteneur et plomb</th>
                   <th>Documents</th>
                 </tr>
               </thead>
               <tbody>
                 {report.shipments.map((s) => (
-                  <tr key={s.movement_id} style={{ borderTop: "1px solid #ddd", verticalAlign: "top" }}>
+                  <tr key={s.movement_id} style={{ verticalAlign: "top" }}>
                     <td>{day(s.occurred_at)}</td>
                     <td>
                       {s.customer_name}
@@ -261,7 +261,7 @@ export default function Rappel() {
                     </td>
                     <td>{[s.customer_phone, s.customer_email].filter(Boolean).join(" · ")}</td>
                     <td>{s.lot_code}</td>
-                    <td>{withUnit(s.quantity, s.base_unit)}</td>
+                    <td className="num">{withUnit(s.quantity, s.base_unit)}</td>
                     <td>
                       {s.container_number}
                       {s.seal_number ? ` · plomb ${s.seal_number}` : ""}
@@ -277,7 +277,7 @@ export default function Rappel() {
           )}
 
           <h2>5. Tous les lots du périmètre</h2>
-          <p style={{ color: "#555" }}>
+          <p style={{ color: "var(--muted)" }}>
             Le périmètre prudent comprend tout ce qui a été fabriqué avec les mêmes lots reçus, même dans un autre séchoir. Les
             emballages ne l&apos;élargissent pas.
           </p>

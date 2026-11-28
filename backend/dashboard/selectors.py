@@ -146,13 +146,14 @@ class Context:
             if bands and bands.get(name):
                 row["band"] = bands[name]
             series.append(row)
-        return {"kind": "line", "title": title, "unit": unit, "series": series}
+        # `aggregate` dit a l'ecran comment lire la courbe : somme (kilos) ou moyenne (pourcentages, heures).
+        return {"kind": "line", "title": title, "unit": unit, "series": series, "aggregate": kind}
 
     # Donnees ---------------------------------------------------------------------
 
     @cached_property
     def runs(self):
-        found = production_selectors.runs(include_cancelled=False).filter(ended_at__gte=self.start)
+        found = production_selectors.runs(include_cancelled=False).filter(ended_at__gte=self.start, ended_at__lte=self.now)
         return [production_selectors.decorate(r) for r in found]
 
     @cached_property
@@ -160,6 +161,7 @@ class Context:
         """Receptions de matiere (hors emballages) sur la periode, sans les receptions annulees."""
         return list(
             Movement.objects.filter(movement_type=Movement.Type.RECEPTION, occurred_at__gte=self.start,
+                                    occurred_at__lte=self.now,
                                     reversed_by__isnull=True)
             .exclude(lot__article__article_type=Article.Type.EMBALLAGE)
             .select_related("lot__article", "lot__parcel", "lot__supplier", "user")
@@ -169,14 +171,14 @@ class Context:
     @cached_property
     def checks(self):
         return list(
-            QualityCheck.objects.filter(checked_at__gte=self.start).select_related("lot__article")
+            QualityCheck.objects.filter(checked_at__gte=self.start, checked_at__lte=self.now).select_related("lot__article")
             .order_by("checked_at")
         )
 
     @cached_property
     def shipments(self):
         return list(
-            Shipment.objects.filter(shipped_at__gte=self.start)
+            Shipment.objects.filter(shipped_at__gte=self.start, shipped_at__lte=self.now)
             .select_related("customer").prefetch_related("lines__lot__article", "lines__movement__reversed_by")
             .order_by("-shipped_at")
         )
@@ -216,7 +218,7 @@ def _tile(code, title, *, value=None, unit="", status=INFO, subtitle="", thresho
     return {
         "code": code, "title": title, "value": value, "value_label": value_label, "unit": unit,
         "status": status, "status_label": STATUS_LABELS[status], "subtitle": subtitle, "threshold": threshold,
-        "detail": list(detail), "empty": empty, "scope": scope, "source": source,
+        "detail": list(detail), "empty": empty, "scope": scope, "source": source, "previous": None,
     }
 
 
@@ -387,7 +389,7 @@ def tile_yields(ctx):
     for name, (inp, out) in per_article.items():
         if out:
             parts.append(f"{name} {_fmt(out * 100 / inp)} % ({_fmt(inp / out)} pour 1)")
-    _, totals = production_selectors.material_balance(date_from=_local_date(ctx.start))
+    _, totals = production_selectors.material_balance(date_from=_local_date(ctx.start), date_to=_local_date(ctx.now))
     steps = []
     for t in totals:
         step_rated = [r for r in rated if r.step == t["step"]]
@@ -845,11 +847,19 @@ def default_days(role):
 def dashboard(*, user, days=None, now=None):
     days = days or default_days(user.role)
     ctx = Context(user=user, days=days, now=now)
+    tiles = [TILES[code](ctx) for code in ROLE_TILES.get(user.role, [])]
+    # Comparaison : meme calcul sur la periode juste avant (meme duree). Seulement pour les tuiles « sur la
+    # periode » : un etat actuel (stock, lots bloques) n'a pas d'historique stocke, donc pas de comparaison.
+    previous_ctx = Context(user=user, days=days, now=ctx.now - datetime.timedelta(days=days))
+    for tile in tiles:
+        if tile["scope"] == "period" and not tile["empty"]:
+            before = TILES[tile["code"]](previous_ctx)
+            tile["previous"] = None if before["empty"] else before["value"]
     return {
         "role": user.role,
         "days": days,
         "periods": list(PERIODS),
         "generated_at": ctx.now,
         "granularity": ctx.granularity,
-        "tiles": [TILES[code](ctx) for code in ROLE_TILES.get(user.role, [])],
+        "tiles": tiles,
     }
