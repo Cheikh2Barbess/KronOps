@@ -114,7 +114,13 @@ body {
   background: #374151;
 }
 
+/* Le menu reste fige sous le bandeau quand l'ecran de droite defile. S'il est plus haut que la fenetre, il defile seul. */
 .sidebar {
+  position: sticky;
+  top: var(--topbar-h, 0px);
+  align-self: start;
+  height: calc(100vh - var(--topbar-h, 0px));
+  overflow-y: auto;
   background: var(--side);
   border-right: 1px solid var(--line);
   padding: 16px 12px;
@@ -156,6 +162,9 @@ body {
     grid-template-columns: minmax(0, 1fr);
   }
   .sidebar {
+    position: static;
+    height: auto;
+    overflow-y: visible;
     flex-direction: row;
     flex-wrap: wrap;
     border-right: 0;

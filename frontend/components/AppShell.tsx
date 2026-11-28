@@ -6,7 +6,7 @@
 // et l'API refuse de toute facon ce que le role ne permet pas.
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { ReactNode, createContext, useContext, useEffect, useState } from "react";
+import { ReactNode, createContext, useContext, useEffect, useRef, useState } from "react";
 import { api } from "@/lib/api";
 
 export type Me = { username: string; role: string; tenant_name: string };
@@ -61,6 +61,9 @@ export default function AppShell({ children }: { children: ReactNode }) {
   const [health, setHealth] = useState<Health | null>(null);
   // Modules facultatifs desactives dans l'ecran Pipeline : leur bouton n'est pas affiche.
   const [off, setOff] = useState<string[]>([]);
+  // Hauteur reelle du bandeau : le menu de gauche se fige juste en dessous, meme si le bandeau passe sur deux lignes.
+  const topbar = useRef<HTMLElement>(null);
+  const [topbarHeight, setTopbarHeight] = useState(0);
 
   useEffect(() => {
     api<Health>("health/").then(setHealth).catch(() => setHealth({ status: "injoignable", database: "?" }));
@@ -74,6 +77,14 @@ export default function AppShell({ children }: { children: ReactNode }) {
       .then((blocks) => setOff(blocks.flatMap((b) => b.steps).filter((s) => !s.is_active).map((s) => s.code)))
       .catch(() => setOff([]));
   }, [me, pathname]);
+
+  useEffect(() => {
+    const el = topbar.current;
+    if (!el) return;
+    const observer = new ResizeObserver(() => setTopbarHeight(el.offsetHeight));
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [me]);
 
   async function onLogout() {
     await api("auth/logout/", { method: "POST" }).catch(() => null);
@@ -103,8 +114,8 @@ export default function AppShell({ children }: { children: ReactNode }) {
 
   return (
     <SessionContext.Provider value={session}>
-      <div className="shell">
-        <header className="topbar no-print">
+      <div className="shell" style={{ ["--topbar-h" as string]: `${topbarHeight}px` }}>
+        <header ref={topbar} className="topbar no-print">
           <Link href="/" className="brand">
             Tracalys
           </Link>
