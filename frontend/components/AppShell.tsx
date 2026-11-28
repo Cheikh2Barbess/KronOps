@@ -9,7 +9,12 @@ import { usePathname, useRouter } from "next/navigation";
 import { ReactNode, createContext, useContext, useEffect, useRef, useState } from "react";
 import { api } from "@/lib/api";
 
-export type Me = { username: string; role: string; tenant_name: string };
+export type Me = { username: string; first_name?: string; last_name?: string; role: string; tenant_name: string };
+
+// Nom affiche dans le bandeau : prenom et nom de la fiche, sinon l'identifiant.
+function displayName(me: Me) {
+  return [me.first_name, me.last_name].map((s) => (s || "").trim()).filter(Boolean).join(" ") || me.username;
+}
 type Health = { status: string; database: string };
 type PipelineBlock = { steps: { code: string; is_active: boolean }[] };
 
@@ -126,7 +131,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
             {health ? (healthy ? "Service et base OK" : "Service ou base en défaut") : "..."}
           </span>
           <span className="user">
-            <strong>{me.username}</strong> <span className="role">{ROLE_LABELS[me.role] || me.role}</span>
+            <strong>{displayName(me)}</strong> <span className="role">{ROLE_LABELS[me.role] || me.role}</span>
           </span>
           <button type="button" className="logout" onClick={onLogout}>
             Se déconnecter
