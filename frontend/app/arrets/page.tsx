@@ -3,7 +3,9 @@
 // Arrets de ligne : un equipement s'arrete, l'operateur le declare au poste en trois choix (equipement, cause,
 // en cours ou termine). Les causes sont une liste fermee, classee planifiee ou non. « Autre » demande une precision.
 // Un arret en cours se termine d'un clic. Une erreur s'annule avec un motif (Admin, Production) : rien n'est efface.
-import { FormEvent, useCallback, useEffect, useState } from "react";
+import Link from "next/link";
+import { useSearchParams } from "next/navigation";
+import { FormEvent, Suspense, useCallback, useEffect, useState } from "react";
 import { useSession } from "@/components/AppShell";
 import { CodePicker, Option, errorText, when } from "@/components/Codes";
 import { Icon } from "@/components/Icon";
@@ -34,11 +36,26 @@ const big = { fontSize: "1.05em", padding: "10px 14px", minHeight: 44 };
 const hours = (h: number) => `${h.toLocaleString("fr-FR", { maximumFractionDigits: 1 })} h`;
 const toIso = (v: FormDataEntryValue | null) => (v ? new Date(String(v)).toISOString() : null);
 
-export default function Arrets() {
+export default function ArretsPage() {
+  return (
+    <Suspense fallback={<p>Chargement...</p>}>
+      <Arrets />
+    </Suspense>
+  );
+}
+
+// Filtres venus d'un clic au tableau de bord (Pareto, frise) : ?cause=...&equipment=...&days=...
+function Arrets() {
   const { me } = useSession();
+  const params = useSearchParams();
+  const cause = params.get("cause") || "";
+  const equipmentFilter = params.get("equipment") || "";
   const [options, setOptions] = useState<Options | null>(null);
   const [rows, setRows] = useState<Stop[]>([]);
-  const [days, setDays] = useState(30);
+  const [days, setDays] = useState(() => {
+    const d = Number(params.get("days"));
+    return [7, 30, 90, 365].includes(d) ? d : 30;
+  });
   const [mode, setMode] = useState<"now" | "past">("now");
   const [cancelling, setCancelling] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -47,8 +64,11 @@ export default function Arrets() {
 
   const load = useCallback(() => {
     api<Options>("production/stops/options/").then(setOptions).catch((e) => setError(errorText(e)));
-    api<Stop[]>(`production/stops/?days=${days}`).then(setRows).catch((e) => setError(errorText(e)));
-  }, [days]);
+    const query = new URLSearchParams({ days: String(days) });
+    if (cause) query.set("cause", cause);
+    if (equipmentFilter) query.set("equipment", equipmentFilter);
+    api<Stop[]>(`production/stops/?${query.toString()}`).then(setRows).catch((e) => setError(errorText(e)));
+  }, [days, cause, equipmentFilter]);
   useEffect(() => {
     if (me) load();
   }, [me, load]);
@@ -57,6 +77,9 @@ export default function Arrets() {
   const canDeclare = ["admin", "production", "operateur"].includes(me.role);
   const canCancel = ["admin", "production"].includes(me.role);
   const ongoing = rows.filter((r) => r.ongoing);
+  const filtered = Boolean(cause || equipmentFilter);
+  const causeLabel = options?.causes.find((c) => c.code === cause)?.label || cause;
+  const equipmentLabel = options?.equipment.find((e) => e.id === equipmentFilter)?.code || "un équipement";
 
   async function onDeclare(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -211,8 +234,15 @@ export default function Arrets() {
       <section className="detail-block">
         <div style={{ display: "flex", flexWrap: "wrap", gap: 12, alignItems: "center", marginBottom: 10 }}>
           <h3 className="detail-answer" style={{ margin: 0 }}>
-            Arrêts récents
+            {filtered ? "Arrêts filtrés" : "Arrêts récents"}
           </h3>
+          {filtered && (
+            <span style={{ display: "inline-flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+              {cause && <span className="status-badge">Cause : {causeLabel}</span>}
+              {equipmentFilter && <span className="status-badge">Équipement : {equipmentLabel}</span>}
+              <Link href="/arrets">Tout afficher</Link>
+            </span>
+          )}
           <label style={{ display: "inline-flex", gap: 8, alignItems: "center" }}>
             <span className="muted">Depuis</span>
             <select value={days} onChange={(e) => setDays(Number(e.target.value))}>

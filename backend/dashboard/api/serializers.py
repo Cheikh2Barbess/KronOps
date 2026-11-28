@@ -34,3 +34,7 @@ class TargetWriteSerializer(serializers.Serializer):
 
 class TargetQuerySerializer(serializers.Serializer):
     year = serializers.IntegerField(min_value=2000, max_value=2100, required=False)
+
+
+class GapQuerySerializer(serializers.Serializer):
+    period = serializers.ChoiceField(choices=["jour", "semaine", "mois"], required=False, default="mois")

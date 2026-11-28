@@ -1,4 +1,5 @@
 import datetime
+import uuid
 
 from django.db.models import Prefetch
 from django.utils import timezone
@@ -308,13 +309,23 @@ class StopListView(TenantAPIView):
 
     @extend_schema(responses={200: StopSerializer(many=True)},
                    parameters=[OpenApiParameter("days", int, description="Arrets des N derniers jours (defaut 30)"),
-                               OpenApiParameter("ongoing", bool, description="Seulement les arrets en cours")])
+                               OpenApiParameter("ongoing", bool, description="Seulement les arrets en cours"),
+                               OpenApiParameter("cause", str, description="Code de cause"),
+                               OpenApiParameter("equipment", str, description="Identifiant de l'equipement")])
     def get(self, request):
         try:
             days = min(max(int(request.query_params.get("days", 30)), 1), 400)
         except ValueError:
             raise ValidationError({"days": ["Nombre de jours attendu."]})
-        found = selectors.line_stops(start=timezone.now() - datetime.timedelta(days=days))
+        equipment_id = request.query_params.get("equipment") or None
+        if equipment_id:
+            try:
+                uuid.UUID(equipment_id)
+            except ValueError:
+                raise ValidationError({"equipment": ["Identifiant attendu."]})
+        found = selectors.line_stops(start=timezone.now() - datetime.timedelta(days=days), equipment_id=equipment_id)
+        if request.query_params.get("cause"):
+            found = found.filter(cause_code=request.query_params["cause"])
         if request.query_params.get("ongoing") in ("1", "true"):
             found = found.filter(ended_at__isnull=True, cancelled_at__isnull=True)
         return Response(StopSerializer([selectors.decorate_stop(s) for s in found[:500]], many=True).data)

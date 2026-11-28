@@ -7,6 +7,8 @@
 // - le nom de chaque courbe est ecrit au bout de la ligne, pas dans une legende a part ;
 // - chiffres arrondis, sans decimale au-dela de 100.
 // Couleurs d'etat (vert, jaune, rouge) : toujours avec icone et mot (components/Status.tsx).
+import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import { Icon } from "@/components/Icon";
 import { Status, StatusBadge, StatusIcon, STATUS_META } from "@/components/Status";
@@ -15,13 +17,20 @@ export type Cell = string | number | { text: string | number; status: Status };
 export type Point = { x: string; y: number | null };
 // `target` : serie de cible (Sollwert), dessinee en pointilles gris, jamais mise en avant.
 export type Series = { name: string; points: Point[]; band?: { min: number; max: number }; target?: boolean };
-export type Bar = { label: string; value: number | null; status?: Status };
+// href : la barre ouvre la liste des evenements qu'elle resume (ex. les arrets de cette cause).
+export type Bar = { label: string; value: number | null; status?: Status; href?: string };
+// Cascade de l'ecart : les totaux partent de zero, les autres pas montent ou descendent depuis le total courant.
+export type WaterfallStep = { code: string; label: string; value: number | null; total: boolean; estimate: boolean; note: string };
+// Frise : une ligne par equipement, des plages de temps colorees par nature (marche, arret planifie ou non).
+export type TimelineItem = { start: string; end: string; kind: string; label: string; href?: string };
 // aggregate : "sum" (kilos par periode), "mean" (pourcentages, heures), "cumul" (total qui s'accumule).
 export type Detail =
   | { kind: "line"; title: string; unit: string; series: Series[]; aggregate?: "sum" | "mean" | "cumul" }
   | { kind: "bars"; title: string; unit: string; bars: Bar[] }
   | { kind: "table"; title: string; columns: string[]; rows: Cell[][] }
-  | { kind: "tabs"; title: string; tabs: { label: string; details: Detail[] }[] };
+  | { kind: "tabs"; title: string; tabs: { label: string; details: Detail[] }[] }
+  | { kind: "waterfall"; title: string; unit: string; steps: WaterfallStep[] }
+  | { kind: "timeline"; title: string; start: string; end: string; lanes: { label: string; items: TimelineItem[] }[]; legend: Record<string, string> };
 
 const HIGHLIGHT = "#2e6be6";
 const OTHERS = ["#98a2b3", "#b4bcc8", "#7d8899", "#c7cdd6"];
@@ -65,6 +74,23 @@ function highlightIndex(series: Series[], aggregate: string) {
 // Reponse a la question du graphique, tiree des valeurs affichees (rien d'invente).
 export function answer(detail: Detail): string | null {
   if (detail.kind === "tabs") return null;
+  if (detail.kind === "waterfall") {
+    const get = (code: string) => detail.steps.find((s) => s.code === code)?.value ?? null;
+    const target = get("target"), real = get("real"), loss = get("stop_loss");
+    if (target === null || real === null) return null;
+    const gap = real - target;
+    const lost = Math.abs(loss || 0);
+    if (gap >= 0) return `Au-dessus de la cible de ${nf(gap, detail.unit)}${lost ? `, malgré environ ${nf(lost, detail.unit)} perdus par arrêts` : ""}`;
+    if (!lost) return `Écart ${nf(gap, detail.unit)} : aucun arrêt déclaré ne l'explique`;
+    if (lost >= Math.abs(gap)) return `Écart ${nf(gap, detail.unit)} : les arrêts déclarés (environ ${nf(lost, detail.unit)} perdus) suffisent à l'expliquer`;
+    return `Écart ${nf(gap, detail.unit)} : les arrêts déclarés en expliquent environ ${Math.round((lost * 100) / Math.abs(gap))} %`;
+  }
+  if (detail.kind === "timeline") {
+    const items = detail.lanes.flatMap((l) => l.items.filter((i) => i.kind !== "run"));
+    if (!items.length) return "Aucun arrêt sur la frise";
+    const ongoing = items.filter((i) => i.kind === "ongoing").length;
+    return `${items.length} arrêt(s) sur la frise${ongoing ? `, dont ${ongoing} en cours` : ""}`;
+  }
   if (detail.kind === "line") {
     const series = detail.series.filter((s) => defined(s).length);
     if (!series.length) return null;
@@ -315,7 +341,7 @@ export function Bars({ bars, unit }: { bars: Bar[]; unit: string }) {
         const color = alert ? STATUS_META[b.status!].border : b.status ? "#d0d5dd" : b === top ? HIGHLIGHT : "#d0d5dd";
         return (
           <div key={b.label} className="bar-row">
-            <span>{b.label}</span>
+            <span>{b.href ? <Link href={b.href}>{b.label}</Link> : b.label}</span>
             <span className="bar-track" title={`${b.label} : ${nf(b.value, unit)}`}>
               <span className="bar-fill" style={{ width: `${Math.max(1, ((b.value || 0) * 100) / max)}%`, background: color }} />
               <span className="bar-value">
@@ -328,6 +354,162 @@ export function Bars({ bars, unit }: { bars: Bar[]; unit: string }) {
         );
       })}
     </div>
+  );
+}
+
+// Cascade : cible, pertes, ecart non explique, reel. Totaux en bleu, pertes en rouge (icone et mot dans le tableau),
+// gains en vert. Une estimation est hachuree et marquee « estimation » : elle ne passe jamais pour une mesure.
+export function Waterfall({ steps, unit }: { steps: WaterfallStep[]; unit: string }) {
+  const shown = steps.filter((s) => s.value !== null);
+  if (!shown.length) return <p className="muted">Aucune donnée.</p>;
+  let running = 0;
+  const bars = shown.map((s) => {
+    const v = s.value as number;
+    const from = s.total ? 0 : running;
+    const to = s.total ? v : running + v;
+    running = to;
+    return { ...s, from, to };
+  });
+  const values = bars.flatMap((b) => [b.from, b.to, 0]);
+  const ticks = niceTicks(Math.min(...values), Math.max(...values));
+  const min = ticks[0], max = ticks[ticks.length - 1] || 1;
+  const W = 900, H = 300, L = 60, R = 16, T = 24, B = 54;
+  const slot = (W - L - R) / bars.length;
+  const y = (v: number) => T + (H - T - B) * (1 - (v - min) / (max - min || 1));
+  const color = (b: (typeof bars)[number]) => (b.total ? HIGHLIGHT : (b.value as number) < 0 ? STATUS_META.bad.border : STATUS_META.ok.border);
+  return (
+    <figure style={{ margin: 0 }}>
+      <svg className="chart-svg" viewBox={`0 0 ${W} ${H}`} width="100%" role="img" aria-label={`Cascade de l'écart en ${unit}`} style={{ maxHeight: 340 }}>
+        <defs>
+          <pattern id="hatch" width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+            <rect width="8" height="8" fill="#fff" />
+            <line x1="0" y1="0" x2="0" y2="8" stroke={STATUS_META.bad.border} strokeWidth="4" />
+          </pattern>
+        </defs>
+        {ticks.map((t) => (
+          <g key={t}>
+            <line x1={L} x2={W - R} y1={y(t)} y2={y(t)} stroke={t === 0 ? "#98a2b3" : "#eef0f3"} />
+            <text x={L - 8} y={y(t) + 4} textAnchor="end" fontSize="12" fill="#667085">
+              {round(t)}
+            </text>
+          </g>
+        ))}
+        {bars.map((b, i) => {
+          const top = y(Math.max(b.from, b.to)), height = Math.max(2, Math.abs(y(b.from) - y(b.to)));
+          const cx = L + slot * i + slot / 2, w = Math.min(90, slot * 0.6);
+          return (
+            <g key={b.code}>
+              <rect x={cx - w / 2} y={top} width={w} height={height} rx={3} fill={b.estimate ? "url(#hatch)" : color(b)} stroke={color(b)} strokeWidth={b.estimate ? 2 : 0}>
+                <title>{`${b.label} : ${nf(b.value, unit)}${b.estimate ? " (estimation)" : ""}. ${b.note}`}</title>
+              </rect>
+              <text x={cx} y={top - 6} textAnchor="middle" fontSize="12" fontWeight={b.total ? 650 : 500} fill="#344054">
+                {`${!b.total && (b.value as number) > 0 ? "+" : ""}${nf(b.value, unit)}`}
+              </text>
+              <text x={cx} y={H - 30} textAnchor="middle" fontSize="12" fill="#475467">
+                {b.label.length > 22 ? `${b.label.slice(0, 21)}…` : b.label}
+              </text>
+              {b.estimate && (
+                <text x={cx} y={H - 14} textAnchor="middle" fontSize="11" fill={STATUS_META.bad.fg}>
+                  estimation
+                </text>
+              )}
+            </g>
+          );
+        })}
+      </svg>
+      <DataTable
+        columns={["Étape", "Valeur", "Nature", "Comment c'est calculé"]}
+        rows={shown.map((s) => [
+          s.label,
+          s.total ? nf(s.value, unit) : { text: `${(s.value as number) > 0 ? "+" : ""}${nf(s.value, unit)}`, status: (s.value as number) < 0 ? "bad" : "ok" },
+          s.total ? "Total" : s.estimate ? "Estimation" : "Calcul",
+          s.note || "",
+        ])}
+      />
+    </figure>
+  );
+}
+
+const TIMELINE_COLORS: Record<string, string> = { run: "#c7d7fb", unplanned: STATUS_META.bad.border, planned: "#98a2b3", ongoing: STATUS_META.warn.border };
+const dayFmt = (d: Date) => d.toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit" });
+const timeFmt = (d: Date) => d.toLocaleString("fr-FR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+
+// Frise : axe du temps en jours, une ligne par equipement. Clic sur un arret : la liste des arrets correspondants.
+export function Timeline({ detail }: { detail: Extract<Detail, { kind: "timeline" }> }) {
+  const router = useRouter();
+  const begin = new Date(detail.start).getTime(), finish = new Date(detail.end).getTime();
+  if (!detail.lanes.length || finish <= begin) return <p className="muted">Rien sur la frise pour cette période.</p>;
+  const W = 900, L = 150, R = 12, laneH = 30, T = 8, B = 26;
+  const H = T + detail.lanes.length * laneH + B;
+  const x = (t: number) => L + ((t - begin) * (W - L - R)) / (finish - begin);
+  const days: number[] = [];
+  const first = new Date(begin);
+  first.setHours(0, 0, 0, 0);
+  for (let d = first.getTime() + 86400000; d < finish; d += 86400000) days.push(d);
+  const every = Math.ceil(days.length / 10) || 1;
+  const kinds = Array.from(new Set(detail.lanes.flatMap((l) => l.items.map((i) => i.kind))));
+  return (
+    <figure style={{ margin: 0 }}>
+      <svg className="chart-svg" viewBox={`0 0 ${W} ${H}`} width="100%" role="img" aria-label={detail.title}>
+        {days.map((d, i) => (
+          <g key={d}>
+            <line x1={x(d)} x2={x(d)} y1={T} y2={H - B} stroke="#eef0f3" />
+            {i % every === 0 && (
+              <text x={x(d)} y={H - 8} textAnchor="middle" fontSize="11" fill="#667085">
+                {dayFmt(new Date(d))}
+              </text>
+            )}
+          </g>
+        ))}
+        {detail.lanes.map((lane, li) => {
+          const top = T + li * laneH;
+          return (
+            <g key={lane.label}>
+              <text x={L - 8} y={top + laneH / 2 + 4} textAnchor="end" fontSize="12" fill="#344054">
+                {lane.label.length > 20 ? `${lane.label.slice(0, 19)}…` : lane.label}
+              </text>
+              <line x1={L} x2={W - R} y1={top + laneH / 2} y2={top + laneH / 2} stroke="#f2f4f7" strokeWidth={laneH - 10} />
+              {lane.items.map((item, k) => {
+                const a = x(new Date(item.start).getTime()), b = x(new Date(item.end).getTime());
+                const stopItem = item.kind !== "run";
+                return (
+                  <rect
+                    key={k}
+                    x={a}
+                    width={Math.max(3, b - a)}
+                    y={top + (stopItem ? 5 : 9)}
+                    height={stopItem ? laneH - 10 : laneH - 18}
+                    rx={2}
+                    fill={TIMELINE_COLORS[item.kind] || "#98a2b3"}
+                    style={item.href ? { cursor: "pointer" } : undefined}
+                    onClick={item.href ? () => router.push(item.href!) : undefined}
+                  >
+                    <title>{`${detail.legend[item.kind] || item.kind} : ${item.label}, du ${timeFmt(new Date(item.start))} au ${timeFmt(new Date(item.end))}`}</title>
+                  </rect>
+                );
+              })}
+            </g>
+          );
+        })}
+      </svg>
+      <p className="timeline-legend">
+        {kinds.map((k) => (
+          <span key={k}>
+            <span className="legend-swatch" style={{ background: TIMELINE_COLORS[k] || "#98a2b3" }} />
+            {detail.legend[k] || k}
+          </span>
+        ))}
+      </p>
+      <details>
+        <summary className="muted">Voir la frise en tableau</summary>
+        <DataTable
+          columns={["Équipement", "Nature", "Début", "Fin", "Détail"]}
+          rows={detail.lanes.flatMap((l) =>
+            l.items.map((i) => [l.label, detail.legend[i.kind] || i.kind, timeFmt(new Date(i.start)), i.kind === "ongoing" ? "En cours" : timeFmt(new Date(i.end)), i.label]),
+          )}
+        />
+      </details>
+    </figure>
   );
 }
 
@@ -368,6 +550,8 @@ export function DetailView({ detail }: { detail: Detail }) {
       {detail.kind === "line" && <LineChart series={detail.series} unit={detail.unit} aggregate={detail.aggregate} />}
       {detail.kind === "bars" && <Bars bars={detail.bars} unit={detail.unit} />}
       {detail.kind === "table" && <DataTable columns={detail.columns} rows={detail.rows} />}
+      {detail.kind === "waterfall" && <Waterfall steps={detail.steps} unit={detail.unit} />}
+      {detail.kind === "timeline" && <Timeline detail={detail} />}
     </section>
   );
 }

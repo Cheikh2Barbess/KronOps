@@ -14,6 +14,7 @@ import calendar
 import datetime
 from collections import OrderedDict, defaultdict
 from decimal import Decimal
+from urllib.parse import urlencode
 
 from django.utils import timezone
 
@@ -573,12 +574,38 @@ def tile_targets(ctx):
     return ctx.tile(
         "targets", "Réel contre cible", value=_num(pct), unit="%", value_label="de la cible à date",
         status=worst(statuses), threshold=threshold, scope="now", source=source,
+        link={"href": "/dashboard/ecart", "label": "Expliquer l'écart : produit, équipement, arrêt"},
         subtitle=(f"En retard : {', '.join(behind)}" if behind else "Tous les produits sont dans la cible à date"),
         detail=[month_table, {"kind": "tabs", "title": "Comparer par jour, semaine, mois ou saison", "tabs": tabs}],
     )
 
 
 # Arrets de ligne -------------------------------------------------------------------------
+
+
+def stops_href(**params):
+    return "/arrets?" + urlencode({k: v for k, v in params.items() if v})
+
+
+def stop_timeline(ctx, stops):
+    """Frise des arrets par equipement, sur les 14 derniers jours au plus (au-dela, illisible)."""
+    begin = max(ctx.start, ctx.now - datetime.timedelta(days=14))
+    lanes = defaultdict(list)
+    names = {}
+    for s in stops:
+        if s.ended_at and s.ended_at < begin:
+            continue
+        names[s.equipment_id] = f"{s.equipment.code} {s.equipment.name}"
+        kind = "ongoing" if s.ongoing else "planned" if s.planned else "unplanned"
+        lanes[s.equipment_id].append({
+            "start": max(s.started_at, begin).isoformat(), "end": (s.ended_at or ctx.now).isoformat(), "kind": kind,
+            "label": f"{s.cause_label}, {_fmt(s.duration_hours, 'h')}",
+            "href": stops_href(equipment=s.equipment_id, cause=s.cause_code, days=ctx.days)})
+    return {"kind": "timeline", "title": "Frise des arrêts par équipement (14 derniers jours au plus)",
+            "start": begin.isoformat(), "end": ctx.now.isoformat(),
+            "lanes": [{"label": names[k], "items": sorted(v, key=lambda i: i["start"])}
+                      for k, v in sorted(lanes.items(), key=lambda kv: names[kv[0]])],
+            "legend": {"unplanned": "Arrêt non planifié", "planned": "Arrêt planifié", "ongoing": "Arrêt en cours"}}
 
 
 def tile_line_stops(ctx):
@@ -597,10 +624,13 @@ def tile_line_stops(ctx):
         return ctx.tile("line_stops", "Arrêts de ligne", value=0, unit="h", value_label="d'arrêt non planifié",
                         status=OK, threshold=threshold, source=source, subtitle="Aucun arrêt déclaré sur la période")
     by_cause, by_equipment = defaultdict(Decimal), defaultdict(Decimal)
+    cause_codes, equipment_ids = {}, {}
     by_bucket = defaultdict(lambda: defaultdict(list))
     for s in stops:
         by_cause[(s.cause_label, s.planned)] += s.duration_hours
+        cause_codes[(s.cause_label, s.planned)] = s.cause_code
         by_equipment[f"{s.equipment.code} {s.equipment.name}"] += s.duration_hours
+        equipment_ids[f"{s.equipment.code} {s.equipment.name}"] = s.equipment_id
         bucket = ctx.bucket(_local(max(s.started_at, ctx.start)))
         by_bucket["Planifié" if s.planned else "Non planifié"][bucket].append(s.duration_hours)
     rows = [[timezone.localtime(s.started_at).strftime("%d/%m/%Y %H:%M"),
@@ -616,10 +646,14 @@ def tile_line_stops(ctx):
         "line_stops", "Arrêts de ligne", value=_num(unplanned), unit="h", value_label="d'arrêt non planifié",
         status=status, threshold=threshold, source=source, subtitle=" · ".join(parts),
         detail=[
-            {"kind": "bars", "title": "Heures d'arrêt par cause (la plus lourde d'abord)", "unit": "h",
-             "bars": [{"label": k[0], "value": _num(v)} for k, v in sorted(by_cause.items(), key=lambda kv: -kv[1])]},
-            {"kind": "bars", "title": "Heures d'arrêt par équipement", "unit": "h",
-             "bars": [{"label": k, "value": _num(v)} for k, v in sorted(by_equipment.items(), key=lambda kv: -kv[1])]},
+            {"kind": "bars", "title": "Pareto des causes : heures d'arrêt, la plus lourde d'abord (clic : les arrêts)",
+             "unit": "h",
+             "bars": [{"label": k[0], "value": _num(v), "href": stops_href(cause=cause_codes[k], days=ctx.days)}
+                      for k, v in sorted(by_cause.items(), key=lambda kv: -kv[1])]},
+            {"kind": "bars", "title": "Heures d'arrêt par équipement (clic : les arrêts)", "unit": "h",
+             "bars": [{"label": k, "value": _num(v), "href": stops_href(equipment=equipment_ids[k], days=ctx.days)}
+                      for k, v in sorted(by_equipment.items(), key=lambda kv: -kv[1])]},
+            stop_timeline(ctx, stops),
             ctx.line("Heures d'arrêt par période, planifiées ou non", "h", by_bucket),
             {"kind": "table", "title": "Arrêts de la période",
              "columns": ["Début", "Fin", "Durée", "Équipement", "Site", "Cause", "Type", "Déclaré par"], "rows": rows},
