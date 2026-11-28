@@ -219,11 +219,13 @@ class Context:
 
 
 def _tile(code, title, *, value=None, unit="", status=INFO, subtitle="", threshold=None, detail=(), empty=False,
-          scope="period", source="", value_label=None):
+          scope="period", source="", value_label=None, link=None):
+    # link : {"href", "label"} vers un ecran qui explique la tuile (ex. l'ecart a la cible).
     return {
         "code": code, "title": title, "value": value, "value_label": value_label, "unit": unit,
         "status": status, "status_label": STATUS_LABELS[status], "subtitle": subtitle, "threshold": threshold,
         "detail": list(detail), "empty": empty, "scope": scope, "source": source, "previous": None,
+        "link": link,
     }
 
 

@@ -142,7 +142,7 @@ TARGETS = [
     ("sechee", 2026, [None, None, None, 650, 900, 1000, 900, 300, None, None, None, None]),
     ("ananas_seche", 2026, [250, 250, 250, None, None, None, None, 120, 250, 250, 450, 300]),
     ("ananas_seche", 2027, [300, 300, 300, 200, None, None, None, None, None, None, None, None]),
-    ("coco_sechee", 2026, [None, None, None, None, None, None, 500, 1100, 1100, 1300, 1200, 1100]),
+    ("coco_sechee", 2026, [None, None, None, None, None, None, 500, 1100, 1100, 1300, 1450, 1100]),
     ("coco_sechee", 2027, [1100, 1100, 1100, 1100, None, None, None, None, None, None, None, None]),
 ]
 
@@ -165,8 +165,9 @@ STOPS = [
     (70, 3, "SEC-S2", "panne_mecanique", 7),
     (45, 16, "SEC-S1", "coupure_courant", 2),
     (33, 10, "CDT-S1", "manque_emballage", 5),
-    (20, 1, "SEC-S2", "manque_combustible", 6),
-    (12, 18, "SEC-S1", "coupure_courant", 3),
+    # Pendant les sechages de coco (jour - 11) et d'ananas (jour - 9) : l'ecran « Écart » montre le lot concerne.
+    (11, 22, "SEC-S2", "manque_combustible", 5),
+    (9, 20, "SEC-S1", "coupure_courant", 3),
     (5, 9, "RAP-S1", "panne_mecanique", 4),
 ]
 

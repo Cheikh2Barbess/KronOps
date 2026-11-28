@@ -6,15 +6,16 @@ from rest_framework.response import Response
 
 from core.api import TenantAPIView
 from catalog.models import Article
-from dashboard import product_selectors, selectors, services
+from dashboard import gap_selectors, product_selectors, selectors, services
 from dashboard.api.serializers import (
     DashboardQuerySerializer,
+    GapQuerySerializer,
     TargetQuerySerializer,
     TargetWriteSerializer,
     ThresholdSerializer,
     ThresholdWriteSerializer,
 )
-from dashboard.indicators import THRESHOLDS
+from dashboard.indicators import THRESHOLDS, status_for
 from tenants.permissions import IsTenantAdmin, has_role
 from tenants.models import User
 
@@ -102,3 +103,49 @@ class TargetView(TenantAPIView):
                              year=data["year"], months=data["months"])
         row = next(r for r in self._payload(data["year"])["articles"] if r["id"] == str(article.id))
         return Response(row)
+
+
+class GapPermission(IsAuthenticated):
+    """Explication de l'ecart : les roles qui voient les cibles (pas l'operateur)."""
+
+    def has_permission(self, request, view):
+        return has_role(request.user, User.Role.ADMIN, User.Role.LECTURE, User.Role.PRODUCTION, User.Role.QUALITE)
+
+
+class _GapView(TenantAPIView):
+    permission_classes = [GapPermission]
+
+    def period(self, request):
+        query = GapQuerySerializer(data=request.query_params)
+        query.is_valid(raise_exception=True)
+        return query.validated_data["period"]
+
+    @staticmethod
+    def attainment_status():
+        t = selectors.thresholds()["target_attainment_pct"]
+        return lambda pct: status_for(pct, direction=t["direction"], green=t["green"], red=t["red"])
+
+
+class GapView(_GapView):
+    """Niveau 1 : produits avec cible, reel et ecart, le plus grand retard en premier."""
+
+    @extend_schema(parameters=[OpenApiParameter("period", str, description="jour, semaine ou mois (a date)")])
+    def get(self, request):
+        return Response(gap_selectors.products(self.attainment_status(), self.period(request)))
+
+
+class GapProductView(_GapView):
+    """Niveau 2 : cascade de l'ecart d'un produit et ses equipements."""
+
+    @extend_schema(parameters=[OpenApiParameter("period", str, description="jour, semaine ou mois (a date)")])
+    def get(self, request, article_id):
+        return Response(gap_selectors.product(self.attainment_status(), self.period(request), article_id))
+
+
+class GapEquipmentView(_GapView):
+    """Niveau 3 : un equipement pour un produit, frise, Pareto, arrets et lot en cours."""
+
+    @extend_schema(parameters=[OpenApiParameter("period", str, description="jour, semaine ou mois (a date)")])
+    def get(self, request, article_id, equipment_id):
+        return Response(gap_selectors.equipment(self.attainment_status(), self.period(request), article_id,
+                                                equipment_id))

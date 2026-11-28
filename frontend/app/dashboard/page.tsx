@@ -32,6 +32,8 @@ type Tile = {
   source: string;
   // Meme indicateur sur la periode juste avant (meme duree). null : pas de donnee, ou etat actuel sans historique.
   previous: number | null;
+  // Ecran qui explique la tuile (ex. l'ecart a la cible : produit, equipement, arret).
+  link: { href: string; label: string } | null;
 };
 type Dashboard = { role: string; days: number; periods: number[]; generated_at: string; tiles: Tile[] };
 
@@ -184,6 +186,14 @@ function FullScreen({ tile, days, onClose }: { tile: Tile; days: number; onClose
               </>
             )}
           </p>
+          {tile.link && (
+            <p style={{ margin: "12px 0 0" }}>
+              <Link href={tile.link.href} className="btn-link">
+                <Icon name="search" size={16} />
+                {tile.link.label}
+              </Link>
+            </p>
+          )}
         </section>
         {tile.empty ? (
           <p className="muted">Aucune saisie sur la période : rien n&apos;est calculé tant qu&apos;il n&apos;y a pas de donnée.</p>
