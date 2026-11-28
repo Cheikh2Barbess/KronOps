@@ -9,15 +9,42 @@
   --accent-soft: #e6f2ec;
 }
 
+/* Police Inter 4.1 (licence SIL OFL, voir public/fonts/Inter-LICENSE.txt), hebergee localement :
+   aucun appel a un service externe. Une seule police variable couvre toutes les graisses. */
+@font-face {
+  font-family: "InterVariable";
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url("/fonts/InterVariable.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "InterVariable";
+  font-style: italic;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url("/fonts/InterVariable-Italic.woff2") format("woff2");
+}
+
 * {
   box-sizing: border-box;
 }
 
 body {
   margin: 0;
-  font-family: system-ui, sans-serif;
+  font-family: "InterVariable", system-ui, sans-serif;
+  font-optical-sizing: auto;
   color: var(--text);
   background: #fff;
+}
+
+/* Les champs et boutons prennent aussi la police Inter (le navigateur ne la leur transmet pas seul). */
+button,
+input,
+select,
+textarea {
+  font-family: inherit;
 }
 
 .shell-guest {
