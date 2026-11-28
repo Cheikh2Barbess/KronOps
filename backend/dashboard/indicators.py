@@ -65,6 +65,10 @@ THRESHOLDS = {
         "green": "2", "red": "6",
         "help": "Heures d'arrêt non planifié (panne, coupure, manque), tous équipements confondus, par semaine en moyenne sur la période.",
     },
+    "ongoing_stop_hours": {
+        "label": "Durée d'un arrêt en cours", "unit": "h", "direction": LOWER, "green": "1", "red": "4",
+        "help": "Un équipement à l'arrêt depuis plus longtemps que ce seuil devient une alerte (jaune, puis rouge).",
+    },
 }
 
 

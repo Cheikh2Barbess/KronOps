@@ -72,6 +72,10 @@ const when = (iso: string) => new Date(iso).toLocaleString("fr-FR", { day: "2-di
 const href = (params: Record<string, string | undefined>) =>
   `/dashboard/ecart?${new URLSearchParams(Object.entries(params).filter((e): e is [string, string] => !!e[1])).toString()}`;
 
+// Action pre-remplie depuis un arret non planifie : reparer l'equipement, liee a l'arret et au produit.
+const actionHref = (s: StopRow, data: Level3) =>
+  `/actions?${new URLSearchParams({ create: "1", action_type: "maintenance", subject_code: "reparer_equipement", line_stop: s.id, article: data.product.article_id }).toString()}`;
+
 function Summary({ p }: { p: ProductRow }) {
   const unit = unitLabel(p.unit, 2);
   return (
@@ -191,6 +195,18 @@ function Equipment({ data }: { data: Level3 }) {
             s.declared_by || "Inconnu",
           ])}
         />
+        {data.stops.some((s) => !s.planned) && (
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 10 }}>
+            {data.stops
+              .filter((s) => !s.planned)
+              .map((s) => (
+                <Link key={s.id} href={actionHref(s, data)} className="btn-link">
+                  <Icon name="plus" size={16} />
+                  Créer une action : arrêt du {when(s.started_at)}
+                </Link>
+              ))}
+          </div>
+        )}
         <p style={{ marginTop: 10 }}>
           <Link href={data.stops_href} className="btn-link">
             <Icon name="circle-pause" size={16} />

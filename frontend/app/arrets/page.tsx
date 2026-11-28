@@ -76,6 +76,7 @@ function Arrets() {
   if (!me) return null;
   const canDeclare = ["admin", "production", "operateur"].includes(me.role);
   const canCancel = ["admin", "production"].includes(me.role);
+  const canCall = ["admin", "production", "qualite", "operateur"].includes(me.role);
   const ongoing = rows.filter((r) => r.ongoing);
   const filtered = Boolean(cause || equipmentFilter);
   const causeLabel = options?.causes.find((c) => c.code === cause)?.label || cause;
@@ -111,6 +112,17 @@ function Arrets() {
       const done = await api<Stop>(`production/stops/${stop.id}/end/`, { method: "POST", body: "{}" });
       setMessage(`${done.equipment_code} repart : arrêt de ${hours(done.duration_hours)} terminé.`);
       load();
+    } catch (e) {
+      setError(errorText(e));
+    }
+  }
+
+  // Appel au poste : la maintenance ou la qualite est prevenue par une action a attribuer, priorite haute.
+  async function onCall(stop: Stop, actionType: "maintenance" | "qualite") {
+    setError(null);
+    try {
+      await api("actions/call/", { method: "POST", body: JSON.stringify({ line_stop: stop.id, action_type: actionType }) });
+      setMessage(`${actionType === "maintenance" ? "Maintenance" : "Qualité"} appelée pour ${stop.equipment_code}. L'appel est dans l'écran Actions, à attribuer.`);
     } catch (e) {
       setError(errorText(e));
     }
@@ -164,14 +176,26 @@ function Arrets() {
                 <span>
                   {s.cause_label}, depuis le {when(s.started_at)} ({hours(s.duration_hours)})
                 </span>
-                {canDeclare && (
-                  <span>
+                <span style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                  {canDeclare && (
                     <button type="button" onClick={() => onEnd(s)} style={big}>
                       <Icon name="check" size={16} />
                       La ligne repart : terminer l&apos;arrêt
                     </button>
-                  </span>
-                )}
+                  )}
+                  {canCall && (
+                    <>
+                      <button type="button" onClick={() => onCall(s, "maintenance")} style={big}>
+                        <Icon name="wrench" size={16} />
+                        Appeler la maintenance
+                      </button>
+                      <button type="button" onClick={() => onCall(s, "qualite")} style={big}>
+                        <Icon name="clipboard-check" size={16} />
+                        Appeler la qualité
+                      </button>
+                    </>
+                  )}
+                </span>
               </div>
             ))}
           </div>
@@ -179,11 +203,11 @@ function Arrets() {
       )}
 
       {canDeclare && options && (
-        <form key={formKey} onSubmit={onDeclare} className="detail-block" style={{ display: "grid", gap: 12, maxWidth: 860 }}>
+        <form key={formKey} onSubmit={onDeclare} className="detail-block" style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr)", gap: 12, maxWidth: 860 }}>
           <h3 className="detail-answer">Déclarer un arrêt</h3>
           <label>
             <strong>1. Équipement</strong>{" "}
-            <select name="equipment" required defaultValue="" style={{ ...big, maxWidth: 560 }}>
+            <select name="equipment" required defaultValue="" style={{ ...big, width: "100%", maxWidth: 560 }}>
               <option value="" disabled>
                 (choisir)
               </option>
