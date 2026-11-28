@@ -8,15 +8,15 @@ import { ApiError } from "@/lib/api";
 export type Option = { code: string; label: string };
 
 export const ORGANIC: Record<string, string> = { bio: "Bio", conversion: "En conversion", conventionnel: "Conventionnel" };
-const ORGANIC_COLOR: Record<string, string> = { bio: "#1b5e20", conversion: "#8a5a00", conventionnel: "#555" };
+const ORGANIC_COLOR: Record<string, string> = { bio: "#1b5e20", conversion: "#8a5a00", conventionnel: "var(--muted)" };
 
 export function OrganicBadge({ status }: { status: string }) {
   if (!status) return null;
   return (
     <span
       style={{
-        border: `1px solid ${ORGANIC_COLOR[status] || "#555"}`,
-        color: ORGANIC_COLOR[status] || "#555",
+        border: `1px solid ${ORGANIC_COLOR[status] || "var(--muted)"}`,
+        color: ORGANIC_COLOR[status] || "var(--muted)",
         borderRadius: 4,
         padding: "0 4px",
         fontSize: "0.85em",

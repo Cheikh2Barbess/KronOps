@@ -92,46 +92,46 @@ export default function Bilan() {
           {data.totals.length === 0 ? (
             <p>Aucune étape sur la période.</p>
           ) : (
-            <table cellPadding={4} style={{ borderCollapse: "collapse", width: "100%" }}>
+            <table cellPadding={4} style={{ width: "100%" }}>
               <thead>
                 <tr style={{ textAlign: "left" }}>
                   <th>Étape</th>
-                  <th>Déclarations</th>
-                  <th>Consommé</th>
-                  <th>Produit</th>
-                  <th>Déchets</th>
-                  <th>Rendement</th>
-                  <th>Écarts</th>
-                  <th>Saisies tardives</th>
+                  <th className="num">Déclarations</th>
+                  <th className="num">Consommé</th>
+                  <th className="num">Produit</th>
+                  <th className="num">Déchets</th>
+                  <th className="num">Rendement</th>
+                  <th className="num">Écarts</th>
+                  <th className="num">Saisies tardives</th>
                 </tr>
               </thead>
               <tbody>
                 {data.totals.map((t) => (
-                  <tr key={t.step} style={{ borderTop: "1px solid #ddd" }}>
+                  <tr key={t.step}>
                     <td>{t.step_label}</td>
-                    <td>{t.runs}</td>
-                    <td>{withUnit(t.input_quantity, t.unit)}</td>
-                    <td>{withUnit(t.output_quantity, t.unit)}</td>
-                    <td>{withUnit(t.waste_quantity, t.unit)}</td>
-                    <td>{t.yield_pct === null ? "" : `${fmt(t.yield_pct)} %`}</td>
-                    <td style={{ color: t.deviations ? "#b00020" : undefined }}>{t.deviations}</td>
-                    <td style={{ color: t.late_entries ? "#8a5a00" : undefined }}>{t.late_entries}</td>
+                    <td className="num">{t.runs}</td>
+                    <td className="num">{withUnit(t.input_quantity, t.unit)}</td>
+                    <td className="num">{withUnit(t.output_quantity, t.unit)}</td>
+                    <td className="num">{withUnit(t.waste_quantity, t.unit)}</td>
+                    <td className="num">{t.yield_pct === null ? "" : `${fmt(t.yield_pct)} %`}</td>
+                    <td className="num" style={{ color: t.deviations ? "#b00020" : undefined }}>{t.deviations}</td>
+                    <td className="num" style={{ color: t.late_entries ? "#8a5a00" : undefined }}>{t.late_entries}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
           )}
           <h2>Détail des étapes</h2>
-          <table cellPadding={4} style={{ borderCollapse: "collapse", width: "100%" }}>
+          <table cellPadding={4} style={{ width: "100%" }}>
             <thead>
               <tr style={{ textAlign: "left" }}>
                 <th>Fin</th>
                 <th>Étape</th>
-                <th>Consommé</th>
-                <th>Produit</th>
-                <th>Déchets</th>
-                <th>Reste (eau, écart)</th>
-                <th>Rendement</th>
+                <th className="num">Consommé</th>
+                <th className="num">Produit</th>
+                <th className="num">Déchets</th>
+                <th className="num">Reste (eau, écart)</th>
+                <th className="num">Rendement</th>
               </tr>
             </thead>
             <tbody>
@@ -139,7 +139,6 @@ export default function Bilan() {
                 <tr
                   key={r.id}
                   style={{
-                    borderTop: "1px solid #ddd",
                     verticalAlign: "top",
                     background: r.yield_status === "bas" || r.yield_status === "haut" ? "#fdecea" : undefined,
                   }}
@@ -170,7 +169,7 @@ export default function Bilan() {
                       </>
                     )}
                   </td>
-                  <td>
+                  <td className="num">
                     {withUnit(r.input_quantity, r.base_unit)}
                     {r.inputs.map((i) => (
                       <div key={i.lot_code}>
@@ -180,14 +179,14 @@ export default function Bilan() {
                       </div>
                     ))}
                   </td>
-                  <td>
+                  <td className="num">
                     {withUnit(r.output_quantity, r.base_unit)}
                     <br />
                     <small>
                       {r.output_lot_code} <OrganicBadge status={r.organic_status} />
                     </small>
                   </td>
-                  <td>
+                  <td className="num">
                     {Number(r.waste_quantity) ? withUnit(r.waste_quantity, r.base_unit) : ""}
                     {r.waste_label && (
                       <>
@@ -196,8 +195,8 @@ export default function Bilan() {
                       </>
                     )}
                   </td>
-                  <td>{r.unexplained_quantity === null ? "" : withUnit(r.unexplained_quantity, r.base_unit)}</td>
-                  <td>
+                  <td className="num">{r.unexplained_quantity === null ? "" : withUnit(r.unexplained_quantity, r.base_unit)}</td>
+                  <td className="num">
                     <YieldCell run={r} />
                   </td>
                 </tr>

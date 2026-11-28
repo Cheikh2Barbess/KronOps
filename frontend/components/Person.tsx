@@ -47,7 +47,7 @@ export function Person({ username }: { username: string | null | undefined }) {
         type="button"
         onClick={() => setOpen(true)}
         title="Voir la fiche"
-        style={{ background: "none", border: "none", padding: 0, color: "#0645ad", textDecoration: "underline", cursor: "pointer", font: "inherit", textAlign: "left" }}
+        className="link-btn"
       >
         {personLabel(person, username)}
       </button>
@@ -69,7 +69,7 @@ function PersonCard({ id, onClose }: { id: string; onClose: () => void }) {
   }, [onClose]);
   const row = (label: string, value: string | null | undefined) => (
     <tr>
-      <th style={{ textAlign: "left", paddingRight: 12, fontWeight: 500, color: "#555" }}>{label}</th>
+      <th style={{ textAlign: "left", paddingRight: 12, fontWeight: 500, color: "var(--muted)" }}>{label}</th>
       <td>{value || "non renseigné"}</td>
     </tr>
   );
@@ -89,7 +89,7 @@ function PersonCard({ id, onClose }: { id: string; onClose: () => void }) {
         {card && (
           <>
             <h3 style={{ marginTop: 0 }}>{card.full_name || card.username}</h3>
-            <table cellPadding={3}>
+            <table cellPadding={3} className="plain">
               <tbody>
                 {row("Identifiant", card.username)}
                 {row("Poste", card.job_title_label)}

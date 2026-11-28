@@ -80,10 +80,10 @@ export default function Qualite() {
     <main>
       <h1>Contrôle qualité</h1>
       <p>Contrôlez le vrac séché ou les cartons avant l&apos;expédition. Un seul critère non conforme bloque le lot.</p>
-      {message && <p style={{ background: "#e8f5e9", padding: 8, fontSize: "1.1em" }}>{message}</p>}
+      {message && <p className="notice" role="status">{message}</p>}
       {error && <p role="alert">{error}</p>}
       {options && (
-        <form key={formKey} onSubmit={onSubmit} style={{ display: "grid", gap: 12, maxWidth: 820, border: "1px solid #888", padding: 12 }}>
+        <form key={formKey} onSubmit={onSubmit} style={{ display: "grid", gap: 12, maxWidth: 820, border: "1px solid var(--line)", borderRadius: "var(--radius)", background: "var(--surface)", padding: 12 }}>
           <label>
             Lot contrôlé{" "}
             <select required value={lotId} onChange={(e) => setLotId(e.target.value)} style={big}>
@@ -135,7 +135,7 @@ export default function Qualite() {
           </table>
           <label>
             Humidité mesurée <input name="moisture_pct" inputMode="decimal" style={{ ...big, width: 80 }} /> %{" "}
-            <small style={{ color: "#555" }}>(facultatif, à reporter du testeur)</small>
+            <small style={{ color: "var(--muted)" }}>(facultatif, à reporter du testeur)</small>
           </label>
           <LateEntry reasons={options.late_reasons} label="Date et heure du contrôle" />
           <div>

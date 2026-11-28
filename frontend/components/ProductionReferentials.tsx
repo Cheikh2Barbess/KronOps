@@ -28,7 +28,7 @@ const EQUIPMENT_TYPES: Record<string, string> = {
   conditionnement: "Ligne de conditionnement",
   autre: "Autre",
 };
-const box = { display: "grid", gap: 8, padding: 12, border: "1px solid #888", margin: "8px 0", maxWidth: 640 };
+const box = { display: "grid", gap: 8, padding: 12, border: "1px solid var(--line)", borderRadius: "var(--radius)", background: "var(--surface)", margin: "8px 0", maxWidth: 640 };
 
 function ParcelEditor({ parcel, suppliers, onDone }: { parcel: Parcel | null; suppliers: Supplier[]; onDone: () => void }) {
   const [error, setError] = useState<string | null>(null);
@@ -85,7 +85,7 @@ function ParcelEditor({ parcel, suppliers, onDone }: { parcel: Parcel | null; su
           </label>
         ))}
       </div>
-      <small style={{ color: "#555" }}>
+      <small style={{ color: "var(--muted)" }}>
         Le statut est recopié sur chaque lot reçu de cette parcelle. Le changer plus tard ne modifie pas les lots déjà reçus.
       </small>
       <label>
@@ -139,7 +139,7 @@ export function ParcelSection() {
       {rows.length === 0 ? (
         <p>Aucune parcelle.</p>
       ) : (
-        <table cellPadding={4} style={{ borderCollapse: "collapse", width: "100%" }}>
+        <table cellPadding={4} style={{ width: "100%" }}>
           <thead>
             <tr style={{ textAlign: "left" }}>
               <th>Parcelle</th>
@@ -159,7 +159,7 @@ export function ParcelSection() {
                   </td>
                 </tr>
               ) : (
-                <tr key={p.id} style={{ borderTop: "1px solid #ddd", opacity: p.is_active ? 1 : 0.5 }}>
+                <tr key={p.id} style={{ opacity: p.is_active ? 1 : 0.5 }}>
                   <td>{p.code}</td>
                   <td>{p.producer_name}</td>
                   <td>{p.locality}</td>
@@ -206,7 +206,7 @@ export function SiteSection() {
   return (
     <section>
       <h2>Sites (usines)</h2>
-      <p style={{ color: "#555" }}>
+      <p style={{ color: "var(--muted)" }}>
         Avec plusieurs sites, chaque réception, étape et expédition indique son site. Avec un seul, il est choisi
         automatiquement.
       </p>
@@ -315,7 +315,7 @@ export function EquipmentSection() {
         <button onClick={() => setEditing("new")}>Ajouter un équipement</button>
       </p>
       {editing === "new" && <EquipmentEditor item={null} sites={sites} onDone={done} />}
-      <table cellPadding={4} style={{ borderCollapse: "collapse", width: "100%" }}>
+      <table cellPadding={4} style={{ width: "100%" }}>
         <tbody>
           {rows.map((e) =>
             editing === e.id ? (
@@ -325,7 +325,7 @@ export function EquipmentSection() {
                 </td>
               </tr>
             ) : (
-              <tr key={e.id} style={{ borderTop: "1px solid #ddd", opacity: e.is_active ? 1 : 0.5 }}>
+              <tr key={e.id} style={{ opacity: e.is_active ? 1 : 0.5 }}>
                 <td>{e.code}</td>
                 <td>{e.name}</td>
                 <td>{EQUIPMENT_TYPES[e.equipment_type] || e.equipment_type}</td>
@@ -398,14 +398,14 @@ export function StepSection() {
   return (
     <section>
       <h2>Étapes de production</h2>
-      <p style={{ color: "#555", maxWidth: 640 }}>
+      <p style={{ color: "var(--muted)", maxWidth: 640 }}>
         Cochez les étapes que vos équipes déclarent, dans l'ordre de votre procédé. Une étape décochée n'est plus
         proposée à la déclaration. Les déclarations déjà faites restent dans l'historique.
       </p>
-      <table cellPadding={4} style={{ borderCollapse: "collapse" }}>
+      <table cellPadding={4}>
         <tbody>
           {rows.map((r, i) => (
-            <tr key={r.code} style={{ borderTop: "1px solid #ddd", opacity: r.is_active ? 1 : 0.6 }}>
+            <tr key={r.code} style={{ opacity: r.is_active ? 1 : 0.6 }}>
               <td>
                 <label>
                   <input type="checkbox" checked={r.is_active} disabled={!isAdmin} onChange={() => toggle(r.code)} />{" "}
@@ -438,7 +438,7 @@ export function StepSection() {
           </button>
         </p>
       ) : (
-        <p style={{ color: "#555" }}>Seul l'administrateur de l'entreprise peut modifier les étapes.</p>
+        <p style={{ color: "var(--muted)" }}>Seul l'administrateur de l'entreprise peut modifier les étapes.</p>
       )}
       {message && <p role="status">{message}</p>}
       {error && <p role="alert">{error}</p>}
@@ -531,7 +531,7 @@ function RouteEditor({
         {steps
           .filter((s) => s.is_active && !chosenSteps.includes(s.code))
           .map((s) => (
-            <label key={s.code} style={{ display: "block", color: "#555" }}>
+            <label key={s.code} style={{ display: "block", color: "var(--muted)" }}>
               <input type="checkbox" checked={false} onChange={() => setChosenSteps([...chosenSteps, s.code])} /> {s.label}
             </label>
           ))}
@@ -539,7 +539,7 @@ function RouteEditor({
       <fieldset>
         <legend>Articles qui suivent ce parcours</legend>
         {articles.map((a) => (
-          <label key={a.id} style={{ display: "block", color: elsewhere[a.id] ? "#777" : undefined }}>
+          <label key={a.id} style={{ display: "block", color: elsewhere[a.id] ? "var(--muted)" : undefined }}>
             <input
               type="checkbox"
               checked={chosenArticles.includes(a.id)}
@@ -591,12 +591,12 @@ export function RouteSection() {
   return (
     <section>
       <h2>Parcours par produit</h2>
-      <p style={{ color: "#555", maxWidth: 640 }}>
+      <p style={{ color: "var(--muted)", maxWidth: 640 }}>
         Un parcours dit quelles étapes un produit traverse et dans quel ordre (par exemple, la coco est cassée et
         parée avant le lavage, la mangue n&apos;a pas de cassage). À la déclaration, on choisit le produit et ses étapes
         s&apos;affichent dans l&apos;ordre de son parcours. Un article sans parcours suit les étapes actives de l&apos;entreprise.
       </p>
-      <table cellPadding={4} style={{ borderCollapse: "collapse" }}>
+      <table cellPadding={4}>
         <thead>
           <tr>
             <th align="left">Parcours</th>
@@ -607,7 +607,7 @@ export function RouteSection() {
         </thead>
         <tbody>
           {routes.map((r) => (
-            <tr key={r.id} style={{ borderTop: "1px solid #ddd", opacity: r.is_active ? 1 : 0.6 }}>
+            <tr key={r.id} style={{ opacity: r.is_active ? 1 : 0.6 }}>
               <td>
                 {r.name}
                 {!r.is_active && " (désactivé)"}

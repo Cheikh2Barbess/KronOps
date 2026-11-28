@@ -173,7 +173,7 @@ function DeclareForm({ options, onDone }: { options: Options; onDone: (run: Run)
   const lotsHere = lotsOnRoute.filter((l) => !workSite || !l.site || l.site === workSite);
   const hiddenElsewhere = lotsOnRoute.length - lotsHere.length;
   return (
-    <form onSubmit={onSubmit} style={{ display: "grid", gap: 14, maxWidth: 860, border: "1px solid #888", padding: 12 }}>
+    <form onSubmit={onSubmit} style={{ display: "grid", gap: 14, maxWidth: 860, border: "1px solid var(--line)", borderRadius: "var(--radius)", background: "var(--surface)", padding: 12 }}>
       <div>
         {options.routes.length > 0 && (
           <div style={{ marginBottom: 10 }}>
@@ -188,7 +188,8 @@ function DeclareForm({ options, onDone }: { options: Options; onDone: (run: Run)
                     setStep("");
                     setArticleId("");
                   }}
-                  style={{ ...big, background: routeId === r.id ? "#0d47a1" : undefined, color: routeId === r.id ? "white" : undefined }}
+                  aria-pressed={routeId === r.id}
+                  style={{ ...big, background: routeId === r.id ? "var(--accent)" : undefined, color: routeId === r.id ? "white" : undefined }}
                 >
                   {r.name}
                 </button>
@@ -208,7 +209,8 @@ function DeclareForm({ options, onDone }: { options: Options; onDone: (run: Run)
                 setRows([{ lot: "", quantity: "" }]);
                 setArticleId("");
               }}
-              style={{ ...big, background: step === s.code ? "#1b5e20" : undefined, color: step === s.code ? "white" : undefined }}
+              aria-pressed={step === s.code}
+              style={{ ...big, background: step === s.code ? "var(--accent)" : undefined, color: step === s.code ? "white" : undefined }}
             >
               {s.label}
             </button>
@@ -246,7 +248,7 @@ function DeclareForm({ options, onDone }: { options: Options; onDone: (run: Run)
           )}
           <div>
             <strong>3. Lots consommés</strong>{" "}
-            <small style={{ color: "#555" }}>(une partie du lot suffit : le reste reste en stock)</small>
+            <small style={{ color: "var(--muted)" }}>(une partie du lot suffit : le reste reste en stock)</small>
             {rows.map((r, i) => {
               const lot = lotById[r.lot];
               return (
@@ -291,13 +293,13 @@ function DeclareForm({ options, onDone }: { options: Options; onDone: (run: Run)
               + Ajouter un lot
             </button>
             {hiddenElsewhere > 0 && (
-              <p style={{ color: "#555", margin: "6px 0 0" }}>
+              <p style={{ color: "var(--muted)", margin: "6px 0 0" }}>
                 {hiddenElsewhere} lot(s) d&apos;une autre usine ne sont pas proposés. Pour les utiliser ici, faites d&apos;abord un{" "}
                 <a href="/transferts">transfert</a>.
               </p>
             )}
             {hiddenOffRoute > 0 && (
-              <p style={{ color: "#555", margin: "6px 0 0" }}>
+              <p style={{ color: "var(--muted)", margin: "6px 0 0" }}>
                 {hiddenOffRoute} lot(s) ne sont pas proposés : autre produit, ou leur parcours ne prévoit pas cette étape.
               </p>
             )}
@@ -458,7 +460,7 @@ export default function Production() {
         Déclarez chaque étape au moment où elle se termine : l&apos;heure est prise automatiquement. Tracalys crée le lot produit,
         retire les quantités consommées et calcule le rendement.
       </p>
-      {message && <p style={{ background: "#e8f5e9", padding: 8, fontSize: "1.1em" }}>{message}</p>}
+      {message && <p className="notice" role="status">{message}</p>}
       {error && <p role="alert">{error}</p>}
       {canDeclare && options && (
         <DeclareForm
@@ -479,7 +481,7 @@ export default function Production() {
       {runs.length === 0 ? (
         <p>Aucune étape déclarée.</p>
       ) : (
-        <table cellPadding={4} style={{ borderCollapse: "collapse", width: "100%" }}>
+        <table cellPadding={4} style={{ width: "100%" }}>
           <thead>
             <tr style={{ textAlign: "left" }}>
               <th>Fin</th>
@@ -491,7 +493,7 @@ export default function Production() {
           </thead>
           <tbody>
             {runs.map((r) => (
-              <tr key={r.id} style={{ borderTop: "1px solid #ddd", verticalAlign: "top", opacity: r.cancelled ? 0.6 : 1 }}>
+              <tr key={r.id} style={{ verticalAlign: "top", opacity: r.cancelled ? 0.6 : 1 }}>
                 <td>
                   {when(r.ended_at)}
                   <br />

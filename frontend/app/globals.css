@@ -1,12 +1,27 @@
-/* Mise en page commune. Palette sobre : bandeau ardoise, menu gris clair, bouton actif vert. */
+/* Charte Tracalys : fond gris tres clair, surfaces blanches arrondies, un vert de marque, des gris pour le reste.
+   Les couleurs d'etat (vert, jaune, rouge) restent reservees aux statuts, toujours avec icone et mot. */
 :root {
-  --bar: #1f2a37;
-  --bar-text: #f3f4f6;
-  --side: #f1f3f5;
-  --line: #cfd6dd;
-  --text: #1f2933;
+  --bg: #f5f6f8;
+  --surface: #ffffff;
+  --surface-2: #f9fafb;
+  --line: #e4e7ec;
+  --line-soft: #eef0f3;
+  --line-strong: #d0d5dd;
+  --text: #101828;
+  --text-2: #344054;
+  --muted: #667085;
   --accent: #1f6f4a;
-  --accent-soft: #e6f2ec;
+  --accent-hover: #185c3c;
+  --accent-soft: #e8f3ee;
+  --focus: 0 0 0 3px rgba(31, 111, 74, 0.22);
+  --radius: 12px;
+  --radius-sm: 8px;
+  --shadow: 0 1px 2px rgba(16, 24, 40, 0.05);
+  --shadow-lg: 0 8px 24px -6px rgba(16, 24, 40, 0.14), 0 2px 6px -2px rgba(16, 24, 40, 0.06);
+  /* Donnees des graphiques : une couleur mise en avant, le reste en gris. */
+  --data: #2e6be6;
+  --data-soft: rgba(46, 107, 230, 0.1);
+  --data-muted: #98a2b3;
 }
 
 /* Police Inter 4.1 (licence SIL OFL, voir public/fonts/Inter-LICENSE.txt), hebergee localement :
@@ -35,8 +50,11 @@ body {
   margin: 0;
   font-family: "InterVariable", system-ui, sans-serif;
   font-optical-sizing: auto;
+  font-size: 15px;
+  line-height: 1.5;
   color: var(--text);
-  background: #fff;
+  background: var(--bg);
+  -webkit-font-smoothing: antialiased;
 }
 
 /* Les champs et boutons prennent aussi la police Inter (le navigateur ne la leur transmet pas seul). */
@@ -45,6 +63,151 @@ input,
 select,
 textarea {
   font-family: inherit;
+  font-size: inherit;
+}
+
+h1 {
+  font-size: 1.6rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.25;
+  margin: 0.2em 0 0.6em;
+}
+
+h2 {
+  font-size: 1.15rem;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  margin: 1.8em 0 0.6em;
+}
+
+h3 {
+  font-size: 1rem;
+  font-weight: 650;
+}
+
+a {
+  color: var(--accent);
+  text-underline-offset: 2px;
+}
+
+a:hover {
+  color: var(--accent-hover);
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* Champs : meme hauteur que les boutons, coins arrondis, anneau de focus visible. */
+input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([type="range"]),
+select,
+textarea {
+  min-height: 36px;
+  padding: 6px 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: var(--shadow);
+  max-width: 100%;
+}
+
+select {
+  padding-right: 28px;
+}
+
+input:focus,
+select:focus,
+textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: var(--focus);
+}
+
+input[type="checkbox"],
+input[type="radio"] {
+  accent-color: var(--accent);
+  width: 16px;
+  height: 16px;
+  vertical-align: -3px;
+}
+
+/* Boutons : secondaire par defaut, principal (vert) pour valider un formulaire.
+   :where() garde ces regles faibles : une classe (tuile, tri) les remplace sans lutte de priorite. */
+:where(button) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 36px;
+  padding: 6px 14px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text-2);
+  font-weight: 550;
+  line-height: 1.2;
+  cursor: pointer;
+  box-shadow: var(--shadow);
+  transition: background 0.12s, border-color 0.12s, color 0.12s;
+}
+
+:where(button:hover:not(:disabled)) {
+  background: var(--surface-2);
+  border-color: #98a2b3;
+  color: var(--text);
+}
+
+:where(button[type="submit"], button.primary) {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+:where(button[type="submit"]:hover:not(:disabled), button.primary:hover:not(:disabled)) {
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
+  color: #fff;
+}
+
+:where(button:disabled) {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+fieldset {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  padding: 14px 16px;
+  margin: 10px 0;
+}
+
+legend {
+  font-weight: 650;
+  padding: 0 6px;
+}
+
+summary {
+  cursor: pointer;
+}
+
+.icon {
+  flex: none;
+}
+
+/* Carte blanche reutilisable (formulaires, encadres). */
+.card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+
+.muted {
+  color: var(--muted);
 }
 
 .shell-guest {
@@ -53,15 +216,11 @@ textarea {
   padding: 0 16px;
 }
 
-.brand-guest {
-  font-size: 1.8em;
-  font-weight: 700;
-  margin-bottom: 8px;
-}
-
 .shell {
   display: grid;
-  grid-template-columns: 230px minmax(0, 1fr);
+  /* Colonne du menu blanche jusqu'en bas, meme quand l'ecran de droite est plus long que la fenetre. */
+  background: linear-gradient(to right, var(--surface) 240px, var(--bg) 240px);
+  grid-template-columns: 240px minmax(0, 1fr);
   grid-template-rows: auto 1fr;
   min-height: 100vh;
 }
@@ -72,25 +231,54 @@ textarea {
   align-items: center;
   flex-wrap: wrap;
   gap: 16px;
+  min-height: 60px;
   padding: 10px 20px;
-  background: var(--bar);
-  color: var(--bar-text);
+  background: var(--surface);
+  color: var(--text);
+  border-bottom: 1px solid var(--line);
   position: sticky;
   top: 0;
   z-index: 10;
 }
 
-.topbar .brand {
-  font-size: 1.35em;
-  font-weight: 700;
-  color: #fff;
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 1.2rem;
+  font-weight: 750;
+  letter-spacing: -0.02em;
+  color: var(--text);
   text-decoration: none;
-  letter-spacing: 0.02em;
+}
+
+.brand:hover {
+  color: var(--text);
+}
+
+.brand-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 9px;
+  background: linear-gradient(135deg, #2b8a5e, #1f6f4a);
+  color: #fff;
 }
 
 .topbar .company {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
   padding-left: 16px;
-  border-left: 1px solid #4b5563;
+  border-left: 1px solid var(--line);
+  color: var(--text-2);
+  font-weight: 500;
+}
+
+.topbar .company .icon {
+  color: var(--muted);
 }
 
 .topbar .spacer {
@@ -101,44 +289,65 @@ textarea {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  font-size: 0.9em;
-  color: #d1d5db;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  font-size: 0.85em;
+  color: var(--text-2);
 }
 
 .topbar .dot {
-  width: 10px;
-  height: 10px;
+  width: 8px;
+  height: 8px;
   border-radius: 50%;
-  background: #9ca3af;
+  background: #98a2b3;
 }
 
 .topbar .dot.ok {
-  background: #34d399;
+  background: #17b26a;
 }
 
 .topbar .dot.ko {
-  background: #f87171;
+  background: #f04438;
+}
+
+.topbar .user {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: 700;
+  font-size: 0.85rem;
+}
+
+.user-text {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.2;
+}
+
+.user-text strong {
+  font-weight: 600;
 }
 
 .topbar .role {
-  margin-left: 4px;
-  padding: 2px 8px;
-  border-radius: 10px;
-  background: #374151;
-  font-size: 0.85em;
+  font-size: 0.8em;
+  color: var(--muted);
 }
 
 .topbar .logout {
-  background: transparent;
-  color: var(--bar-text);
-  border: 1px solid #6b7280;
-  border-radius: 6px;
-  padding: 6px 12px;
-  cursor: pointer;
-}
-
-.topbar .logout:hover {
-  background: #374151;
+  box-shadow: none;
 }
 
 /* Le menu reste fige sous le bandeau quand l'ecran de droite defile. S'il est plus haut que la fenetre, il defile seul. */
@@ -148,45 +357,59 @@ textarea {
   align-self: start;
   height: calc(100vh - var(--topbar-h, 0px));
   overflow-y: auto;
-  background: var(--side);
+  background: var(--surface);
   border-right: 1px solid var(--line);
-  padding: 16px 12px;
+  padding: 14px 12px;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 2px;
 }
 
 .navbtn {
-  display: block;
-  padding: 10px 12px;
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  background: #fff;
-  color: var(--text);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px;
+  border-radius: var(--radius-sm);
+  color: var(--text-2);
   text-decoration: none;
   font-weight: 500;
+  transition: background 0.12s, color 0.12s;
+}
+
+.navbtn .icon {
+  color: var(--muted);
 }
 
 .navbtn:hover {
-  border-color: var(--accent);
-  background: var(--accent-soft);
+  background: var(--surface-2);
+  color: var(--text);
 }
 
 .navbtn.active {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: #fff;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: 650;
+}
+
+.navbtn.active .icon {
+  color: var(--accent);
 }
 
 .content {
-  padding: 20px 28px 40px;
+  padding: 24px 32px 48px;
   min-width: 0;
+}
+
+.content main {
+  max-width: 1400px;
 }
 
 /* Petit ecran : le menu passe en haut, sur plusieurs lignes. */
 @media (max-width: 760px) {
   .shell {
     grid-template-columns: minmax(0, 1fr);
+    background: var(--bg);
   }
   .sidebar {
     position: static;
@@ -198,10 +421,13 @@ textarea {
     border-bottom: 1px solid var(--line);
   }
   .navbtn {
-    padding: 8px 10px;
+    padding: 6px 10px;
   }
   .content {
     padding: 16px;
+  }
+  .user-text .role {
+    display: none;
   }
 }
 
@@ -218,22 +444,125 @@ textarea {
   }
   body {
     margin: 0 !important;
+    background: #fff;
   }
 }
 
 .guest-status {
-  color: #4b5563;
+  color: var(--muted);
   margin-top: 0;
 }
 
 .brand-guest {
-  display: inline-block;
-  color: var(--text);
-  text-decoration: none;
+  margin-bottom: 12px;
 }
 
 .content main > h1:first-of-type {
-  margin-top: 0.2em;
+  margin-top: 0.1em;
+}
+
+/* Tableaux : en-tetes discrets, lignes horizontales douces (pas de grille), lignes aerees,
+   nombres alignes a droite (classe num). Les tableaux internes d'une fiche gardent la classe plain. */
+.content table:not(.plain) {
+  border-collapse: separate;
+  border-spacing: 0;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  font-variant-numeric: tabular-nums;
+  font-size: 0.93rem;
+}
+
+.content table:not(.plain) th {
+  text-align: left;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+  background: var(--surface-2);
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--line);
+  white-space: nowrap;
+  vertical-align: bottom;
+}
+
+.content table:not(.plain) thead tr:first-child th:first-child {
+  border-top-left-radius: var(--radius);
+}
+
+.content table:not(.plain) thead tr:first-child th:last-child {
+  border-top-right-radius: var(--radius);
+}
+
+.content table:not(.plain) td {
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--line-soft);
+  vertical-align: top;
+}
+
+.content table:not(.plain) tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.content table:not(.plain) tbody tr:hover td {
+  background: #fafbfc;
+}
+
+.content table .num,
+.content table th.num {
+  text-align: right;
+  white-space: nowrap;
+}
+
+/* Une seule ligne par cellule, coupee par des points de suspension (le texte complet reste dans l'infobulle). */
+.clip {
+  max-width: 280px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.table-wrap {
+  overflow-x: auto;
+}
+
+/* Tri : bouton dans l'en-tete, fleche du sens actif, double fleche discrete sinon. */
+.sort-btn {
+  all: unset;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+  color: inherit;
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+}
+
+.sort-btn:hover {
+  color: var(--text);
+}
+
+.sort-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+.sort-btn .icon {
+  opacity: 0.45;
+}
+
+th[aria-sort="ascending"] .sort-btn,
+th[aria-sort="descending"] .sort-btn {
+  color: var(--text);
+}
+
+th[aria-sort="ascending"] .sort-btn .icon,
+th[aria-sort="descending"] .sort-btn .icon {
+  opacity: 1;
 }
 
 /* Code couleur (components/Status.tsx) : la couleur vient toujours avec une icone et un mot. */
@@ -241,25 +570,17 @@ textarea {
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  border: 1px solid;
-  border-radius: 12px;
-  padding: 1px 8px 1px 3px;
-  font-size: 0.85em;
+  border-radius: 999px;
+  padding: 2px 9px 2px 6px;
+  font-size: 0.8rem;
   font-weight: 600;
+  line-height: 1.5;
   white-space: nowrap;
 }
 
 .status-icon {
   display: inline-flex;
   align-items: center;
-  justify-content: center;
-  width: 16px;
-  height: 16px;
-  border-radius: 50%;
-  color: #fff;
-  font-size: 11px;
-  font-weight: 700;
-  line-height: 1;
   flex: none;
 }
 
@@ -275,46 +596,96 @@ textarea {
   margin: 0;
 }
 
+.dash-role {
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.dash-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.dash-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin: 14px 0 0;
+}
+
 .dash-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
-  gap: 14px;
-  margin-top: 16px;
+  grid-template-columns: repeat(auto-fill, minmax(270px, 1fr));
+  gap: 16px;
+  margin-top: 18px;
 }
 
+/* Tuile : carte blanche, sans bordure de couleur. L'etat est dit par la pastille (icone + mot). */
 .tile {
-  text-align: left;
-  font: inherit;
-  color: var(--text);
-  background: #fff;
-  border: 1px solid var(--line);
-  border-left: 6px solid var(--tile-color, #9ca3af);
-  border-radius: 8px;
-  padding: 12px 14px;
-  cursor: pointer;
+  all: unset;
+  box-sizing: border-box;
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  min-height: 150px;
+  gap: 8px;
+  min-height: 176px;
+  padding: 18px 18px 14px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  color: var(--text);
+  cursor: pointer;
+  text-align: left;
+  transition: box-shadow 0.15s, border-color 0.15s, transform 0.15s;
 }
 
-.tile:hover,
+.tile:hover {
+  border-color: var(--line-strong);
+  box-shadow: var(--shadow-lg);
+  transform: translateY(-1px);
+}
+
 .tile:focus-visible {
-  box-shadow: 0 2px 10px rgba(31, 42, 55, 0.18);
   outline: 2px solid var(--accent);
-  outline-offset: 1px;
+  outline-offset: 2px;
+}
+
+.tile-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.tile-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 9px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  color: var(--text-2);
+  flex: none;
 }
 
 .tile-title {
-  display: flex;
-  justify-content: space-between;
-  gap: 8px;
   font-weight: 600;
+  font-size: 0.92rem;
+  color: var(--text-2);
+  line-height: 1.3;
+  margin-top: 4px;
 }
 
 .tile-value {
-  font-size: 1.9em;
+  font-size: 2rem;
   font-weight: 700;
+  letter-spacing: -0.03em;
   font-variant-numeric: tabular-nums;
   line-height: 1.1;
 }
@@ -322,27 +693,92 @@ textarea {
 .tile-value small {
   font-size: 0.45em;
   font-weight: 500;
-  color: #4b5563;
+  letter-spacing: 0;
+  color: var(--muted);
+}
+
+.tile-value.empty {
+  font-size: 1.05rem;
+  font-weight: 500;
+  color: var(--muted);
+  letter-spacing: 0;
+}
+
+.trend {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 6px;
+  font-size: 0.84rem;
+  color: var(--muted);
+}
+
+.trend-delta {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-weight: 650;
+  padding: 1px 6px;
+  border-radius: 6px;
+}
+
+.trend-good {
+  color: #067647;
+  background: #ecfdf3;
+}
+
+.trend-bad {
+  color: #b42318;
+  background: #fef3f2;
+}
+
+.trend-neutral {
+  color: var(--text-2);
+  background: #f2f4f7;
 }
 
 .tile-sub {
-  color: #4b5563;
-  font-size: 0.9em;
+  color: var(--muted);
+  font-size: 0.85rem;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
 .tile-foot {
   margin-top: auto;
-  color: #6b7280;
-  font-size: 0.8em;
+  padding-top: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.tile-foot .icon {
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.tile:hover .tile-foot .icon,
+.tile:focus-visible .tile-foot .icon {
+  opacity: 1;
 }
 
 .overlay {
   position: fixed;
   inset: 0;
   z-index: 50;
-  background: #fff;
+  background: var(--bg);
   overflow-y: auto;
-  padding: 20px 28px 40px;
+  padding: 24px 32px 48px;
+}
+
+.overlay-inner {
+  max-width: 1100px;
+  margin: 0 auto;
 }
 
 .overlay-head {
@@ -350,68 +786,97 @@ textarea {
   flex-wrap: wrap;
   align-items: center;
   gap: 12px;
-  border-bottom: 1px solid var(--line);
-  padding-bottom: 12px;
-  margin-bottom: 16px;
+  margin-bottom: 18px;
 }
 
 .overlay-head h2 {
   margin: 0;
-  font-size: 1.6em;
+  font-size: 1.5rem;
+  letter-spacing: -0.02em;
 }
 
 .overlay-close {
   margin-left: auto;
-  font-size: 1em;
-  padding: 8px 14px;
-  border: 1px solid #6b7280;
-  border-radius: 6px;
-  background: #fff;
-  cursor: pointer;
+}
+
+.overlay-summary {
+  padding: 20px 22px;
+  margin-bottom: 16px;
+}
+
+.overlay-summary .tile-value {
+  font-size: 2.4rem;
+}
+
+.overlay-meta {
+  color: var(--muted);
+  font-size: 0.9rem;
+  margin: 12px 0 0;
 }
 
 .detail-block {
-  margin: 0 0 28px;
-  max-width: 1100px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 18px 22px 20px;
+  margin: 0 0 16px;
 }
 
-.detail-block h3 {
-  margin: 0 0 8px;
+.detail-question {
+  margin: 0 0 14px;
+  font-size: 0.82rem;
+  font-weight: 500;
+  color: var(--muted);
 }
 
-.detail-table {
-  border-collapse: collapse;
+.detail-answer {
+  margin: 2px 0 14px;
+  font-size: 1.1rem;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+}
+
+.detail-block .detail-table {
   width: 100%;
-  font-variant-numeric: tabular-nums;
+  box-shadow: none;
 }
 
-.detail-table th,
-.detail-table td {
-  text-align: left;
-  padding: 5px 8px;
-  border-top: 1px solid #e5e7eb;
-  vertical-align: top;
+.chart-svg text {
+  font-family: inherit;
 }
 
-.chart-legend {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 14px;
-  font-size: 0.9em;
-  margin-bottom: 4px;
+.bars {
+  display: grid;
+  gap: 8px;
 }
 
-.chart-legend span {
-  display: inline-flex;
+.bar-row {
+  display: grid;
+  grid-template-columns: minmax(120px, 220px) 1fr;
+  gap: 12px;
   align-items: center;
-  gap: 6px;
 }
 
-.chart-legend i {
-  display: inline-block;
-  width: 16px;
-  height: 3px;
-  border-radius: 2px;
+.bar-track {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.bar-fill {
+  height: 14px;
+  border-radius: 0 6px 6px 0;
+  max-width: 75%;
+}
+
+.bar-value {
+  white-space: nowrap;
+  display: inline-flex;
+  gap: 4px;
+  align-items: center;
+  font-variant-numeric: tabular-nums;
+  font-weight: 550;
 }
 
 @media (max-width: 760px) {
@@ -429,7 +894,68 @@ textarea {
   white-space: nowrap;
 }
 
-.tile-title .status-badge {
-  flex: none;
-  align-self: flex-start;
+/* Lien presente comme un bouton secondaire. */
+.btn-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 36px;
+  padding: 6px 14px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text-2);
+  font-weight: 550;
+  text-decoration: none;
+  box-shadow: var(--shadow);
+}
+
+.btn-link:hover {
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+/* Texte secondaire dans une cellule (article sous le lot, parcelle sous le fournisseur). */
+.content table:not(.plain) td small {
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+/* Bouton qui se lit comme un lien (nom d'une personne dans un tableau). */
+.link-btn {
+  all: unset;
+  cursor: pointer;
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  text-align: left;
+}
+
+.link-btn:hover {
+  color: var(--accent-hover);
+}
+
+.link-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 3px;
+}
+
+/* Message de confirmation apres une action (lot cree, expedition enregistree). */
+.notice {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  border-radius: var(--radius-sm);
+  background: #ecfdf3;
+  border: 1px solid #abefc6;
+  color: #085d3a;
+  font-weight: 500;
+}
+
+.notice-neutral {
+  background: var(--surface);
+  border-color: var(--line);
+  color: var(--text);
 }

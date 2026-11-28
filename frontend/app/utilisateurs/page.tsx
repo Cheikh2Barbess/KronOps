@@ -95,7 +95,7 @@ function UserForm({
   }
 
   return (
-    <form key={user?.id || "new"} onSubmit={onSubmit} style={{ display: "grid", gap: 8, maxWidth: 480, border: "1px solid #ccc", padding: 12 }}>
+    <form key={user?.id || "new"} onSubmit={onSubmit} style={{ display: "grid", gap: 8, maxWidth: 480, border: "1px solid var(--line)", borderRadius: "var(--radius)", background: "var(--surface)", padding: 12 }}>
       <h3 style={{ margin: 0 }}>{user ? `Modifier ${who(user)}` : "Nouvel utilisateur"}</h3>
       <label>
         Identifiant de connexion{" "}
@@ -237,7 +237,7 @@ export default function Users() {
           }}
         />
       )}
-      <table cellPadding={4} style={{ borderCollapse: "collapse", width: "100%", marginTop: 16 }}>
+      <table cellPadding={4} style={{ width: "100%", marginTop: 16 }}>
         <thead>
           <tr style={{ textAlign: "left" }}>
             <th>Nom</th>
@@ -251,7 +251,7 @@ export default function Users() {
         </thead>
         <tbody>
           {users.map((u) => (
-            <tr key={u.id} style={{ borderTop: "1px solid #ddd", verticalAlign: "top", color: u.is_active ? undefined : "#888" }}>
+            <tr key={u.id} style={{ verticalAlign: "top", color: u.is_active ? undefined : "#888" }}>
               <td>{who(u)}</td>
               <td>{u.job_title_label}</td>
               <td>{u.role_label}</td>

@@ -209,3 +209,55 @@ def test_isolation_thresholds_are_per_company(client_a, client_b):
     assert client_b.delete(f"{THRESHOLDS}blocked_lots/").status_code == 200
     rows_a = {r["code"]: r for r in client_a.get(THRESHOLDS).json()}
     assert rows_a["blocked_lots"]["is_default"] is False
+
+
+# Comparaison avec la periode precedente ------------------------------------------------
+
+
+def _receive_at(tenant, user, orchard, kg, days_ago):
+    import datetime
+
+    from django.utils import timezone
+
+    from lots import services as lots
+
+    with tenant_context(tenant.id):
+        return lots.receive_lot(
+            tenant_id=tenant.id, user=user, article=orchard["fresh"], supplier=orchard["p_bio"].producer,
+            supplier_lot_code="", quantity=Decimal(kg), unit="kg", date_type="ddm",
+            expiry_date=datetime.date.today() + datetime.timedelta(days=30), parcel=orchard["p_bio"],
+            occurred_at=timezone.now() - datetime.timedelta(days=days_ago), late_reason_code="ressaisie_papier",
+        )
+
+
+def test_period_tile_gives_the_value_of_the_previous_period(client_a, tenant_a, admin_a, orchard):
+    _receive_at(tenant_a, admin_a, orchard, "500", days_ago=2)
+    _receive_at(tenant_a, admin_a, orchard, "800", days_ago=40)  # periode precedente (30 a 60 jours)
+    _receive_at(tenant_a, admin_a, orchard, "9000", days_ago=70)  # hors des deux periodes
+    received = tiles(client_a, days=30)["received"]
+    assert received["value"] == 500
+    assert received["previous"] == 800
+
+
+def test_previous_period_without_data_is_empty_not_zero(client_a, tenant_a, admin_a, orchard):
+    _receive_at(tenant_a, admin_a, orchard, "500", days_ago=2)
+    received = tiles(client_a, days=30)["received"]
+    assert received["value"] == 500 and received["previous"] is None
+
+
+def test_current_state_tile_has_no_comparison(client_a, chain):
+    # « Lots bloques » est un etat actuel : aucun historique stocke, donc aucune comparaison inventee.
+    assert tiles(client_a)["blocked"]["previous"] is None
+
+
+def test_curves_say_how_values_are_grouped(client_a, tenant_a, admin_a, orchard):
+    _receive_at(tenant_a, admin_a, orchard, "500", days_ago=2)
+    line = tiles(client_a, days=30)["received"]["detail"][0]
+    assert line["kind"] == "line" and line["aggregate"] == "sum"
+
+
+def test_isolation_previous_period_ignores_another_company(client_a, client_b, tenant_a, admin_a, orchard):
+    _receive_at(tenant_a, admin_a, orchard, "800", days_ago=40)
+    _receive_at(tenant_a, admin_a, orchard, "500", days_ago=2)
+    received = tiles(client_b, days=30)["received"]
+    assert received["value"] is None and received["previous"] is None

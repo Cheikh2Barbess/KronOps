@@ -106,7 +106,7 @@ function ArticleEditor({
   }
 
   return (
-    <form onSubmit={onSubmit} style={{ display: "grid", gap: 8, padding: 12, border: "1px solid #888", margin: "8px 0" }}>
+    <form onSubmit={onSubmit} style={{ display: "grid", gap: 8, padding: 12, border: "1px solid var(--line)", borderRadius: "var(--radius)", background: "var(--surface)", margin: "8px 0" }}>
       {article ? (
         <strong>
           Modifier {article.code} (unité de base {UNIT_LABEL[article.base_unit] || article.base_unit}, non modifiable)
@@ -159,7 +159,7 @@ function ArticleEditor({
           Rendement attendu quand cet article est produit : de{" "}
           <input name="yield_min_pct" inputMode="decimal" style={{ width: 60 }} defaultValue={article?.yield_min_pct ?? ""} /> à{" "}
           <input name="yield_max_pct" inputMode="decimal" style={{ width: 60 }} defaultValue={article?.yield_max_pct ?? ""} /> %{" "}
-          <small style={{ color: "#555" }}>
+          <small style={{ color: "var(--muted)" }}>
             (kg obtenus pour 100 kg consommés. Exemple : 13 kg frais pour 1 kg séché = 7,7 %. Hors fourchette, le bilan matière
             signale l&apos;écart.)
           </small>
@@ -253,7 +253,7 @@ function ImportForm({ path, model, onDone }: { path: string; model: string; onDo
   }
 
   return (
-    <form onSubmit={onSubmit} style={{ margin: "12px 0", padding: 12, border: "1px solid #ccc" }}>
+    <form onSubmit={onSubmit} style={{ margin: "12px 0", padding: 12, border: "1px solid var(--line)", borderRadius: "var(--radius)", background: "var(--surface)" }}>
       <input type="file" name="file" accept=".csv,text/csv" required /> <button type="submit">Importer</button>{" "}
       <a href={model} download>
         Télécharger le modèle
@@ -310,7 +310,7 @@ function PartnerEditor({
   }
 
   return (
-    <form onSubmit={onSubmit} style={{ display: "grid", gap: 8, padding: 12, border: "1px solid #888", margin: "8px 0" }}>
+    <form onSubmit={onSubmit} style={{ display: "grid", gap: 8, padding: 12, border: "1px solid var(--line)", borderRadius: "var(--radius)", background: "var(--surface)", margin: "8px 0" }}>
       <strong>{partner ? `Modifier ${partner.name}` : "Nouveau fournisseur ou client"}</strong>
       <label>
         Nom <input name="name" defaultValue={partner?.name ?? ""} required style={{ width: 320 }} />
@@ -409,7 +409,7 @@ function Pager({ count, page, setPage, noun }: { count: number; page: number; se
   );
 }
 
-const filterBar = { display: "flex", flexWrap: "wrap" as const, gap: 12, alignItems: "center", padding: 8, background: "#f4f4f4", margin: "8px 0" };
+const filterBar = { display: "flex", flexWrap: "wrap" as const, gap: 12, alignItems: "center", background: "var(--surface)", border: "1px solid var(--line)", borderRadius: "var(--radius)", padding: "10px 14px", margin: "8px 0" };
 
 const EMPTY_ARTICLE_FILTERS = { q: "", type: "", storage: "", allergen: "", presence: "present", allergen_free: "", has_allergen: "", active: "" };
 
@@ -520,7 +520,7 @@ function ArticleSection({ allergens }: { allergens: Allergen[] }) {
             </div>
           ))}
         </div>
-        <p style={{ margin: "6px 0", color: "#555" }}>
+        <p style={{ margin: "6px 0", color: "var(--muted)" }}>
           Plusieurs « contient » : l&apos;un ou l&apos;autre. Plusieurs « sans » : aucun d&apos;eux. « Sans » ne retient que les articles dont les allergènes sont déclarés.
         </p>
       </details>
@@ -533,14 +533,14 @@ function ArticleSection({ allergens }: { allergens: Allergen[] }) {
         <>
           <Pager count={data.count} page={page} setPage={setPage} noun="article(s)" />
           {data.results.length > 0 && (
-            <table cellPadding={4} style={{ borderCollapse: "collapse", width: "100%" }}>
+            <table cellPadding={4} style={{ width: "100%" }}>
               <thead>
                 <tr style={{ textAlign: "left" }}>
                   <th>Code</th>
                   <th>Nom</th>
                   <th>Type</th>
                   <th>Unité</th>
-                  <th>Durée de vie (j)</th>
+                  <th className="num">Durée de vie (j)</th>
                   <th>Allergènes</th>
                   <th></th>
                 </tr>
@@ -554,12 +554,12 @@ function ArticleSection({ allergens }: { allergens: Allergen[] }) {
                       </td>
                     </tr>
                   ) : (
-                    <tr key={a.id} style={{ borderTop: "1px solid #ddd", opacity: a.is_active ? 1 : 0.5 }}>
+                    <tr key={a.id} style={{ opacity: a.is_active ? 1 : 0.5 }}>
                       <td>{a.code}</td>
                       <td>{a.name}</td>
                       <td>{TYPES[a.article_type] || a.article_type}</td>
                       <td>{UNIT_LABEL[a.base_unit] || a.base_unit}</td>
-                      <td>{a.shelf_life_days ?? ""}</td>
+                      <td className="num">{a.shelf_life_days ?? ""}</td>
                       <td>
                         <AllergenSummary article={a} allergens={allergens} />
                       </td>
@@ -650,7 +650,7 @@ function PartnerSection() {
         <>
           <Pager count={data.count} page={page} setPage={setPage} noun="fournisseur(s) ou client(s)" />
           {data.results.length > 0 && (
-            <table cellPadding={4} style={{ borderCollapse: "collapse", width: "100%" }}>
+            <table cellPadding={4} style={{ width: "100%" }}>
               <thead>
                 <tr style={{ textAlign: "left" }}>
                   <th>Nom</th>
@@ -671,7 +671,7 @@ function PartnerSection() {
                       </td>
                     </tr>
                   ) : (
-                    <tr key={p.id} style={{ borderTop: "1px solid #ddd", opacity: p.is_active ? 1 : 0.5 }}>
+                    <tr key={p.id} style={{ opacity: p.is_active ? 1 : 0.5 }}>
                       <td>{p.name}</td>
                       <td>{[p.is_supplier && "Fournisseur", p.is_customer && "Client"].filter(Boolean).join(", ")}</td>
                       <td>{p.city}</td>
