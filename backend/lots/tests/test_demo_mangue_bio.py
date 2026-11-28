@@ -198,6 +198,14 @@ def test_dashboards_tell_the_dried_fruit_story(demo):
     mango = next(c["series"][0] for c in curves if c["series"][0]["name"].startswith("Mangue"))
     assert mango["band"] == {"min": 14.0, "max": 19.0}
     assert len([p for p in mango["points"] if p["y"] is not None]) >= 4
+    # Actions : revision SEC-S2 en retard, lot de coco en cours de decision, cartons commandes pour l'arret en cours.
+    assert boss["actions"]["value"] == 3 and boss["actions"]["status"] == "bad"
+    alerts = client_for(demo).get("/api/v1/actions/alerts/").json()
+    codes = {a["code"] for a in alerts}
+    assert {"late_action", "blocked_lot", "target"} <= codes
+    blocked = {a["title"]: a["open_action"] for a in alerts if a["code"] == "blocked_lot"}
+    assert len(blocked) == 2  # comme la tuile : un lot bloque sans stock n'est pas une alerte
+    assert sum(1 for v in blocked.values() if v is None) == 1  # l'ananas bloque reste a traiter en direct
     production = tiles("demo.production")
     assert production["late_entries"]["status"] == "ok" and production["late_entries"]["value"] < 3
     assert production["late_entries"]["threshold"]["is_default"] is False  # seuil propre a l'entreprise

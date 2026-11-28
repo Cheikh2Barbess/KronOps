@@ -49,6 +49,8 @@ const ROLE_TITLES: Record<string, string> = {
 
 // Une icone par indicateur (meme famille que le menu).
 const TILE_ICONS: Record<string, IconName> = {
+  alerts: "bell-ring",
+  actions: "list-checks",
   targets: "target",
   products: "chart-column",
   line_stops: "circle-pause",

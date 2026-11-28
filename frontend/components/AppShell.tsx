@@ -10,7 +10,7 @@ import { ReactNode, createContext, useContext, useEffect, useRef, useState } fro
 import { Icon, IconName } from "@/components/Icon";
 import { api } from "@/lib/api";
 
-export type Me = { username: string; first_name?: string; last_name?: string; role: string; tenant_name: string };
+export type Me = { id: string; username: string; first_name?: string; last_name?: string; role: string; tenant_name: string };
 
 // Nom affiche dans le bandeau : prenom et nom de la fiche, sinon l'identifiant.
 function displayName(me: Me) {
@@ -69,6 +69,7 @@ const NAV: NavItem[] = [
   { href: "/tracabilite", icon: "scan-search", label: "Traçabilité", hint: "Recherche amont et aval", roles: ["admin", "qualite", "production", "lecture"] },
   { href: "/receptions", icon: "truck", label: "Réceptions", hint: "Enregistrer une livraison", roles: ["admin", "qualite", "production", "operateur"] },
   { href: "/production", icon: "factory", label: "Production", hint: "Déclarer une étape (mûrissement, séchage, cartons, palette)", roles: ["admin", "production", "operateur"] },
+  { href: "/actions", icon: "list-checks", label: "Actions", hint: "Alertes et actions : qui fait quoi, pour quand" },
   { href: "/arrets", icon: "circle-pause", label: "Arrêts de ligne", hint: "Séchoir ou ligne à l'arrêt : cause, durée, planifié ou non" },
   { href: "/transferts", icon: "arrow-left-right", label: "Transferts", hint: "Envoyer un lot vers une autre usine", roles: ["admin", "production", "operateur"], module: "transfert" },
   { href: "/qualite", icon: "clipboard-check", label: "Contrôle qualité", hint: "Contrôle qualité d'un lot", roles: ["admin", "qualite"] },

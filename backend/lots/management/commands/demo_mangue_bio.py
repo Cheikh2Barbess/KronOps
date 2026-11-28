@@ -34,6 +34,7 @@ from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 from django.utils import timezone
 
+from actions import services as actions
 from catalog import services as catalog
 from catalog.selectors import allergen_codes
 from core.management.checks import ensure_database_migrated
@@ -597,8 +598,32 @@ class Demo:
             production.declare_stop(tenant_id=self.t, user=users.get(code[:3], self.prod), equipment=self.e[code],
                                     cause_code=cause, started_at=start, ended_at=end)
         self.clock.set(self.clock.limit)
-        production.declare_stop(tenant_id=self.t, user=self.op, equipment=self.e["CDT-S1"],
-                                cause_code="manque_emballage", started_at=self.clock.limit - H)
+        return production.declare_stop(tenant_id=self.t, user=self.op, equipment=self.e["CDT-S1"],
+                                       cause_code="manque_emballage", started_at=self.clock.limit - H)
+
+    def _actions(self, today, ongoing_stop, blocked_lot):
+        """Actions de la saison : une terminee, une en retard, une en cours, plus l'appel de cartons sur l'arret en
+        cours. Le lot d'ananas bloque et la coco sous la cible restent sans action : on la cree en direct."""
+        days = lambda n: today - datetime.timedelta(days=n)  # noqa: E731
+        self.clock.set(_at(days(12), 10))
+        done = actions.create_action(tenant_id=self.t, user=self.prod, action_type="maintenance",
+                                     subject_code="verifier_equipement", due_date=days(10), priority="normale",
+                                     responsible=self.prod, equipment=self.e["SEC-S1"])
+        self.clock.set(_at(days(11), 15))
+        actions.close_action(tenant_id=self.t, user=self.prod, action_id=done.id, result_code="resolu")
+        self.clock.set(_at(days(6), 9))
+        actions.create_action(tenant_id=self.t, user=self.admin, action_type="maintenance",
+                              subject_code="planifier_revision", due_date=days(2), priority="normale",
+                              responsible=self.prod, equipment=self.e["SEC-S2"])
+        self.clock.set(_at(days(1), 11))
+        quality = actions.create_action(tenant_id=self.t, user=self.qa, action_type="qualite",
+                                        subject_code="decider_lot", due_date=today + datetime.timedelta(days=2),
+                                        priority="haute", responsible=self.qa, lot=blocked_lot, origin="alerte")
+        actions.start_action(tenant_id=self.t, user=self.qa, action_id=quality.id)
+        self.clock.set(self.clock.limit)
+        actions.create_action(tenant_id=self.t, user=self.prod, action_type="approvisionnement",
+                              subject_code="commander_emballage", due_date=today, priority="haute",
+                              responsible=self.prod, line_stop=ongoing_stop)
 
     def _mango(self, nord, sud):
         a, e, p = self.a, self.e, self.p
@@ -854,7 +879,8 @@ class Demo:
             clock.set(_at(today - datetime.timedelta(days=2), 16))
             services.request_approval(tenant_id=self.t, user=self.op, lot_id=mango["last"].id, action="scrap",
                                       reason_code="emballage_abime", quantity=Decimal("20"))
-            self._stops(today)
+            stop = self._stops(today)
+            self._actions(today, stop, coconut["k2"])
             clock.set(clock.limit)
         assert timezone.now is clock._real
         return [
@@ -868,4 +894,5 @@ class Demo:
             f"Lot détruit après double validation : {mango['bad'].code}",
             f"Rebut en attente de validation : {mango['last'].code} (2 cartons écrasés)",
             "Arrêt en cours à terminer en direct : CDT-S1 (manque de cartons vides), écran Arrêts de ligne",
+            "Écran Actions : une action en retard (révision SEC-S2), créer en direct l'action du lot d'ananas bloqué",
         ]

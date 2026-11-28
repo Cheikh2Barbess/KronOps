@@ -57,14 +57,16 @@ export function CodePicker({
   name,
   commentName,
   required = true,
+  initial = "",
 }: {
   options: Option[];
   label: string;
   name: string;
   commentName: string;
   required?: boolean;
+  initial?: string;
 }) {
-  const [code, setCode] = useState("");
+  const [code, setCode] = useState(initial);
   return (
     <>
       <label>

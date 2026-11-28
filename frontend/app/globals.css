@@ -1022,3 +1022,6 @@ th[aria-sort="descending"] .sort-btn .icon {
 .gap-card { display: grid; gap: 6px; text-align: left; padding: 14px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--surface); color: inherit; text-decoration: none; }
 .gap-card:hover { border-color: var(--accent); box-shadow: var(--shadow); }
 .gap-card strong { font-size: 1.05em; }
+/* Une liste deroulante aux libelles longs ne doit jamais elargir la page sur telephone. */
+select { max-width: 100%; }
+form label { max-width: 100%; min-width: 0; }

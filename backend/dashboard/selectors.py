@@ -16,6 +16,7 @@ from functools import cached_property
 from django.db.models import Min
 from django.utils import timezone
 
+from actions import selectors as action_selectors
 from catalog.models import Article, OrganicStatus, Parcel
 from dashboard import product_selectors
 from dashboard.indicators import BAD, INFO, OK, STATUS_LABELS, THRESHOLDS, WARN, defaults, status_for, worst
@@ -38,15 +39,15 @@ RECEPTION = "reception"  # libelle de « l'etape » d'origine d'un lot recu
 # Tuiles par role, dans l'ordre d'affichage. Le patron voit le global, la production le flux, la qualite les
 # controles, l'operateur ce qu'il a a faire. Chaque tuile ne lit que des donnees ouvertes a ce role.
 ROLE_TILES = {
-    User.Role.ADMIN: ["targets", "products", "produced", "received", "shipped", "yields", "qc", "line_stops",
+    User.Role.ADMIN: ["alerts", "actions", "targets", "products", "produced", "received", "shipped", "yields", "qc", "line_stops",
                       "bottleneck", "stock", "blocked", "approvals", "expiry", "organic", "reception_conformity"],
-    User.Role.LECTURE: ["targets", "products", "produced", "received", "shipped", "yields", "qc", "line_stops",
+    User.Role.LECTURE: ["alerts", "actions", "targets", "products", "produced", "received", "shipped", "yields", "qc", "line_stops",
                         "bottleneck", "stock", "blocked", "expiry", "organic", "reception_conformity"],
-    User.Role.PRODUCTION: ["targets", "products", "line_stops", "runs", "bottleneck", "wip", "yields", "produced",
+    User.Role.PRODUCTION: ["alerts", "actions", "targets", "products", "line_stops", "runs", "bottleneck", "wip", "yields", "produced",
                            "received", "shipped", "blocked", "approvals", "expiry", "late_entries"],
-    User.Role.QUALITE: ["products", "qc", "moisture", "ready_without_qc", "blocked", "approvals",
+    User.Role.QUALITE: ["alerts", "actions", "products", "qc", "moisture", "ready_without_qc", "blocked", "approvals",
                         "reception_conformity", "organic", "expiry", "yields", "late_entries", "line_stops"],
-    User.Role.OPERATEUR: ["wip", "my_entries", "line_stops", "received", "approvals", "blocked"],
+    User.Role.OPERATEUR: ["actions", "alerts", "wip", "my_entries", "line_stops", "received", "approvals", "blocked"],
 }
 
 
@@ -839,7 +840,69 @@ def tile_ready_without_qc(ctx):
     )
 
 
+ALERT_LABELS = {"target": "Produit sous la cible", "ongoing_stop": "Arrêt en cours trop long",
+                "blocked_lot": "Lot bloqué", "late_action": "Action en retard"}
+
+
+def tile_alerts(ctx):
+    source = ("Calculé à chaque affichage : produits sous la cible du mois, arrêts en cours au-delà du seuil, lots "
+              "bloqués, actions en retard.")
+    found = action_selectors.current_alerts(ctx.status)
+    uncovered = [a for a in found if a["open_action"] is None]
+    by_kind = defaultdict(int)
+    for a in found:
+        by_kind[ALERT_LABELS.get(a["code"], a["code"])] += 1
+    return _tile(
+        "alerts", "Alertes", value=len(found), unit="alertes", status=worst([a["status"] for a in found]) if found
+        else OK, scope="now", source=source,
+        subtitle=("Aucune alerte" if not found else
+                  f"{len(uncovered)} sans action" if uncovered else "Toutes ont une action ouverte"),
+        link={"href": "/actions", "label": "Voir les alertes et créer une action"},
+        detail=[
+            _bars("Alertes par type", "alertes", [{"label": k, "value": v} for k, v in by_kind.items()]),
+            _table("Alertes, la plus grave d'abord", ["Alerte", "Détail", "Action ouverte"],
+                   [[_cell(a["title"], a["status"]), a["detail"],
+                     _cell("Aucune", BAD) if a["open_action"] is None else
+                     f"{a['open_action']['status']}, {a['open_action']['responsible'] or 'à attribuer'}"]
+                    for a in found]),
+        ],
+    )
+
+
+def tile_actions(ctx):
+    mine = ctx.user.role == User.Role.OPERATEUR
+    source = "Actions ouvertes ou en cours (écran Actions)." + (" Celles dont vous êtes chargé ou que vous avez créées."
+                                                               if mine else "")
+    found = [action_selectors.decorate(a, ctx.today)
+             for a in action_selectors.actions(status="open", user=ctx.user, mine=mine)]
+    late = [a for a in found if a.late]
+    unassigned = [a for a in found if a.responsible_id is None]
+    status = BAD if late else WARN if unassigned else OK
+    if not found:
+        subtitle = "Aucune action ouverte"
+    else:
+        parts = [f"{len(late)} en retard" if late else "", f"{len(unassigned)} à attribuer" if unassigned else ""]
+        subtitle = ", ".join(p for p in parts if p) or "Toutes attribuées et dans les délais"
+    by_type = defaultdict(int)
+    for a in found:
+        by_type[a.type_label] += 1
+    return _tile(
+        "actions", "Mes actions" if mine else "Actions ouvertes", value=len(found), unit="actions", status=status,
+        scope="now", source=source, subtitle=subtitle,
+        link={"href": "/actions", "label": "Ouvrir l'écran Actions"},
+        detail=[
+            _bars("Actions ouvertes par type", "actions", [{"label": k, "value": v} for k, v in by_type.items()]),
+            _table("Actions ouvertes, échéance la plus proche d'abord",
+                   ["Échéance", "Type", "Objet", "Responsable", "Statut"],
+                   [[_cell(_day(a.due_date), BAD if a.late else None), a.type_label, a.subject,
+                     (a.responsible.get_full_name() or a.responsible.username) if a.responsible else
+                     _cell("À attribuer", WARN), a.get_status_display()] for a in found]),
+        ],
+    )
+
+
 TILES = {
+    "alerts": tile_alerts, "actions": tile_actions,
     "targets": product_selectors.tile_targets, "products": product_selectors.tile_products,
     "line_stops": product_selectors.tile_line_stops,
     "received": tile_received, "produced": tile_produced, "shipped": tile_shipped, "yields": tile_yields,
