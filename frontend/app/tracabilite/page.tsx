@@ -5,6 +5,7 @@
 import { FormEvent, useState } from "react";
 import { OrganicBadge } from "@/components/Codes";
 import { api, ApiError } from "@/lib/api";
+import { LotStatusBadge } from "@/components/Status";
 
 const UNIT_LABEL: Record<string, string> = { kg: "kg", l: "L", unite: "unité(s)" };
 
@@ -37,7 +38,6 @@ type Shipment = {
 };
 type Result = { origins: Lot[]; lots: Lot[]; shipments?: Shipment[] };
 
-const STATUS: Record<string, string> = { disponible: "Disponible", bloque: "Bloqué", detruit: "Détruit" };
 const fmt = (n: string) => Number(n).toLocaleString("fr-FR", { maximumFractionDigits: 3 });
 
 function LotTable({ lots }: { lots: Lot[] }) {
@@ -71,7 +71,7 @@ function LotTable({ lots }: { lots: Lot[] }) {
               {l.expiry_date ? `${l.date_type.toUpperCase()} ${new Date(l.expiry_date).toLocaleDateString("fr-FR")}` : ""}
               {l.expired ? " (périmé)" : ""}
             </td>
-            <td>{STATUS[l.status] || l.status}</td>
+            <td><LotStatusBadge status={l.status} /></td>
             <td>
               {fmt(l.balance)} {UNIT_LABEL[l.base_unit] || l.base_unit}
             </td>

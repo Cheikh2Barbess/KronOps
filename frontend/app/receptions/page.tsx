@@ -8,6 +8,7 @@ import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { LateEntry, LateFlag, ORGANIC, OrganicBadge, lateFields } from "@/components/Codes";
 import { Person } from "@/components/Person";
 import { api, ApiError } from "@/lib/api";
+import { StatusBadge } from "@/components/Status";
 
 type Me = { id: string; username: string; role: string };
 type Option = { code: string; label: string };
@@ -401,7 +402,9 @@ function ReceptionRow({ row, reasons, onChanged }: { row: Row; reasons: Option[]
       <td>
         <Person username={row.username} />
       </td>
-      <td>{state}</td>
+      <td>
+        <StatusBadge status={row.reversed || row.lot_status === "detruit" ? "info" : row.lot_status === "bloque" ? "bad" : "ok"} text={state} />
+      </td>
       <td>
         {row.can_reverse && !reversing && <button onClick={() => setReversing(true)}>Annuler</button>}
         {row.can_reverse && reversing && (

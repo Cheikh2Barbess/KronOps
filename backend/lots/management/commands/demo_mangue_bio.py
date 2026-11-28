@@ -33,6 +33,7 @@ from lots.models import ApprovalRequest
 from lots.reasons import QUALITY_CRITERIA
 from production import services as production
 from shipping import services as shipping
+from shipping.services import container_check_digit
 from tenants import services as tenants
 from tenants.models import Tenant, User
 from tenants.selectors import find_user_by_username, username_taken
@@ -54,6 +55,10 @@ PRODUCERS = {
     "BON-21": ("Kouamé Ahou (productrice démo)", "Bonoua", "6.0", "bio"),
     "ADI-02": ("Aka Jean-Marc (producteur démo)", "Adiaké", "3.5", "conversion"),
     "JAC-04": ("N'Guessan Koffi (producteur démo)", "Jacqueville", "5.0", "bio"),
+    # Producteurs de l'historique de saison (tableau de bord).
+    "ALE-08": ("Ehui Clarisse (productrice démo)", "Alépé", "4.0", "bio"),
+    "TIA-11": ("Konan Serge (producteur démo)", "Tiassalé", "5.5", "bio"),
+    "GRB-06": ("Assi Marcelle (productrice démo)", "Grand-Bassam", "3.0", "bio"),
 }
 # Etapes de l'entreprise, dans l'ordre du procede fruits seches (mangue, ananas, coco). « Préparation » reste
 # desactivee : l'entreprise declare lavage, epluchage et decoupe separement.
@@ -84,6 +89,38 @@ LATE = {"late_reason_code": "ressaisie_papier"}
 
 def _at(day, hour=9):
     return timezone.make_aware(datetime.datetime.combine(day, datetime.time(hour, 0)))
+
+
+def _container(serial):
+    """Numero de conteneur fictif au format ISO 6346, avec son chiffre de controle."""
+    first = f"TRCU{serial}"
+    return f"{first}{container_check_digit(first)}"
+
+
+H = datetime.timedelta(hours=1)
+
+# Historique de saison pour le tableau de bord. TOUTES CES VALEURS SONT FICTIVES (quantites, attentes, humidites).
+# Mangue : (jour, parcelle, caisses de 20 kg, attente avant sechage en h, sechoir, kg frais pour 1 kg seche,
+# humidite au controle). Ratios dans la fourchette publique COLEAD 13 a 18 pour 1, sauf un lot de fin de saison.
+MANGO_HISTORY = [
+    (datetime.date(2026, 4, 21), "NAP-07", 55, 30, "SEC-N1", "13.4", "16.2"),
+    (datetime.date(2026, 5, 5), "SIN-03", 70, 48, "SEC-N3", "14.1", "17.1"),
+    (datetime.date(2026, 5, 19), "KAR-12", 60, 70, "SEC-N1", "15.2", "15.8"),
+    (datetime.date(2026, 6, 2), "NAP-07", 75, 40, "SEC-N3", "13.0", "16.6"),
+    (datetime.date(2026, 6, 30), "SIN-03", 65, 76, "SEC-N1", "17.9", "17.4"),
+    (datetime.date(2026, 7, 14), "KAR-12", 80, 52, "SEC-N3", "19.0", "16.9"),
+    (datetime.date(2026, 7, 28), "NAP-07", 50, 36, "SEC-N1", "14.5", "15.5"),
+    (datetime.date(2026, 8, 11), "SIN-03", 60, 60, "SEC-N3", "13.8", "16.3"),
+]
+# Ananas, relatif a aujourd'hui : (jours avant aujourd'hui, parcelle, caisses de 15 kg, attente avant sechage en h,
+# humidite). Pas de fourchette de rendement : aucune valeur publique verifiee.
+PINEAPPLE_HISTORY = [
+    (95, "ALE-08", 150, 10, "12.5"), (80, "TIA-11", 170, 18, "13.0"), (65, "ALE-08", 140, 40, "12.8"),
+    (50, "TIA-11", 180, 64, "13.4"), (35, "ALE-08", 160, 22, "12.9"), (20, "TIA-11", 150, 30, "13.1"),
+    (10, "ALE-08", 165, 14, None),
+]
+# Coco, relatif a aujourd'hui : (jours avant aujourd'hui, sacs de 50 kg, humidite).
+COCONUT_HISTORY = [(75, 50, "3.1"), (45, 55, "2.8"), (25, 45, "3.4")]
 
 
 class Command(BaseCommand):
@@ -293,6 +330,12 @@ class Demo:
             waste_comment=waste[2] if waste and len(waste) > 2 else "", **LATE,
         ).output_lot
 
+    def _qc_at(self, lot, at, moisture):
+        return services.record_quality_check(
+            tenant_id=self.t, user=self.users[User.Role.QUALITE], lot_id=lot.id, moisture_pct=Decimal(moisture),
+            checks={code: "ok" for code in QUALITY_CRITERIA}, checked_at=at, **LATE,
+        )
+
     def _qc(self, lot, day, hour, moisture, failed=(), comment=""):
         return services.record_quality_check(
             tenant_id=self.t, user=self.users[User.Role.QUALITE], lot_id=lot.id, moisture_pct=Decimal(moisture),
@@ -300,11 +343,107 @@ class Demo:
             checked_at=_at(day, hour), **LATE,
         )
 
+    def _history(self, a, p, e, nord, sud):
+        """Saison complete, pour des courbes et des tuiles credibles au tableau de bord. Valeurs FICTIVES."""
+        d = datetime.date
+        prod = self.users[User.Role.PRODUCTION]
+        ship_lots = {}
+
+        def cartons(site, day, paquets):
+            return services.receive_lot(
+                tenant_id=self.t, user=self.users[User.Role.OPERATEUR], article=a["carton_vide"],
+                supplier=p["emballages"], supplier_lot_code=f"EL-HIST-{day:%m%d}", quantity=Decimal(paquets),
+                unit="paquet", occurred_at=_at(day, 7), site=site, **LATE,
+            )
+
+        def pack(dried, kg, box_article, boxes, at, equipment):
+            n = int(kg // 10)
+            return self._run("conditionnement", e[equipment], [(dried, str(kg)), (boxes, str(n))], box_article, str(n),
+                             at, at + 3 * H, unit="carton", waste=(str(kg - n * 10), "chutes") if kg - n * 10 else None)
+
+        # Mangue, usine Nord.
+        boxes = cartons(nord, d(2026, 4, 20), "20")
+        for i, (day, parcel, caisses, wait, dryer, ratio, moisture) in enumerate(MANGO_HISTORY):
+            lot = self._receive(a["mangue"], parcel, str(caisses), day, nord)
+            kg = caisses * 20
+            ripe_kg = kg * (97 + i % 3) // 100
+            ripe_end = _at(day + datetime.timedelta(days=3), 7)
+            ripe = self._run("murissement", e["MUR-N1"], [(lot, str(kg))], a["mure"], str(ripe_kg), _at(day, 14), ripe_end)
+            dry_start = ripe_end + wait * H
+            dried_kg = int(Decimal(ripe_kg) / Decimal(ratio))
+            dried = self._run("sechage", e[dryer], [(ripe, str(ripe_kg))], a["sechee"], str(dried_kg), dry_start,
+                              dry_start + 22 * H, waste=(str(ripe_kg * 3 // 10), "peaux_noyaux"))
+            carton = pack(dried, dried_kg, a["carton"], boxes, dry_start + 46 * H, "CDT-N1")
+            self._qc_at(carton, dry_start + 50 * H, moisture)
+            ship_lots[("mangue", i)] = carton
+
+        def ship(keys, day, customer, serial, site, bl=True):
+            lines = []
+            for k in keys:
+                lot = ship_lots[k]
+                lines.append((lot, Decimal(lot.production_run.output_quantity), None))
+            shipping.create_shipment(
+                tenant_id=self.t, user=prod, customer=p[customer], lines=lines, shipped_at=_at(day, 7),
+                container_number=_container(serial), seal_number=f"SCELLE-DEMO-H{serial}",
+                export_document_ref=f"COI.CI.2026.DEMO-H{serial}", bill_of_lading=f"BL-DEMO-H{serial}" if bl else "",
+                site=site, **LATE,
+            )
+
+        ship([("mangue", 0), ("mangue", 1)], d(2026, 5, 15), "rotterdam", "260501", nord)
+        ship([("mangue", 2), ("mangue", 3)], d(2026, 6, 12), "lyon", "260601", nord)
+        ship([("mangue", 4), ("mangue", 5)], d(2026, 7, 24), "rotterdam", "260701", nord)
+        # Sans connaissement : l'expedition passe en jaune au tableau de bord. Le dernier lot reste en stock.
+        ship([("mangue", 6)], d(2026, 8, 6), "hambourg", "260801", nord, bl=False)
+
+        # Ananas, usine Sud : epluchage (environ 55 %), sechage, cartons.
+        today = timezone.localdate()
+        boxes_sud = cartons(sud, today - datetime.timedelta(days=100), "20")
+        for i, (ago, parcel, caisses, wait, moisture) in enumerate(PINEAPPLE_HISTORY):
+            day = today - datetime.timedelta(days=ago)
+            lot = self._receive(a["ananas"], parcel, str(caisses), day, sud)
+            kg = caisses * 15
+            peeled_kg = kg * 55 // 100
+            peeled = self._run("epluchage_decoupe", e["PRE-S1"], [(lot, str(kg))], a["ananas_epluche"], str(peeled_kg),
+                               _at(day, 10), _at(day, 14), waste=(str(kg - peeled_kg), "peaux_noyaux"))
+            dry_start = _at(day, 14) + wait * H
+            dried_kg = peeled_kg * 15 // 100
+            dried = self._run("sechage", e["SEC-S1"], [(peeled, str(peeled_kg))], a["ananas_seche"], str(dried_kg),
+                              dry_start, dry_start + 16 * H)
+            carton = pack(dried, dried_kg, a["ananas_carton"], boxes_sud, dry_start + 30 * H, "CDT-S1")
+            # Le dernier lot n'est pas encore controle : « à contrôler avant expédition » pour la Qualité.
+            if moisture:
+                self._qc_at(carton, dry_start + 34 * H, moisture)
+            ship_lots[("ananas", i)] = carton
+        ship([("ananas", 0), ("ananas", 1)], today - datetime.timedelta(days=70), "lyon", "261001", sud)
+        ship([("ananas", 2), ("ananas", 3)], today - datetime.timedelta(days=40), "rotterdam", "261101", sud)
+        ship([("ananas", 4)], today - datetime.timedelta(days=25), "hambourg", "261102", sud)
+
+        # Coco rapee, usine Sud : memes etapes que l'exemple d'octobre.
+        for i, (ago, sacs, moisture) in enumerate(COCONUT_HISTORY):
+            day = today - datetime.timedelta(days=ago)
+            lot = self._receive(a["coco"], "GRB-06", str(sacs), day, sud, unit="sac")
+            kg = sacs * 50
+            steps = [("cassage", "CAS-S1", "coco_amande", 45), ("parage", "CAS-S1", "coco_paree", 85),
+                     ("rapage", "RAP-S1", "coco_rapee", 99), ("pasteurisation", "PAS-S1", "coco_rapee", 99),
+                     ("sechage", "SEC-S2", "coco_sechee", 51), ("refroidissement", "REF-S1", "coco_sechee", 99)]
+            at, current, qty = _at(day, 8), lot, kg
+            for step, equipment, article, pct in steps:
+                out = qty * pct // 100
+                hours = 12 if step == "sechage" else 2
+                current = self._run(step, e[equipment], [(current, str(qty))], a[article], str(out), at, at + hours * H,
+                                    waste=(str(qty - out), "chutes") if step not in ("sechage",) else None)
+                at, qty = at + (hours + 1) * H, out
+            carton = pack(current, qty, a["coco_carton"], boxes_sud, at, "CDT-S1")
+            self._qc_at(carton, at + 4 * H, moisture)
+            ship_lots[("coco", i)] = carton
+        ship([("coco", 0), ("coco", 1)], today - datetime.timedelta(days=15), "hambourg", "261103", sud)
+
     def build(self):
         self._accounts()
         a, p = self._catalog()
         self._steps_and_routes(a)
         sites, e = self._sites()
+        self._history(a, p, e, sites["nord"], sites["sud"])
         nord, sud = sites["nord"], sites["sud"]
         q, prod = self.users[User.Role.QUALITE], self.users[User.Role.PRODUCTION]
         d = datetime.date

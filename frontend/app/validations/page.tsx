@@ -5,6 +5,7 @@
 import { FormEvent, useCallback, useEffect, useState } from "react";
 import { Person } from "@/components/Person";
 import { api, ApiError } from "@/lib/api";
+import { LotStatusBadge, StatusBadge } from "@/components/Status";
 
 type Me = { id: string; username: string; role: string };
 type Lot = {
@@ -49,7 +50,6 @@ const ACTIONS: Record<string, string> = {
   adjust: "Ajustement de stock",
 };
 const STATUS: Record<string, string> = { pending: "En attente", approved: "Validée", rejected: "Refusée", cancelled: "Annulée" };
-const LOT_STATUS: Record<string, string> = { disponible: "Disponible", bloque: "Bloqué", detruit: "Détruit" };
 const ROLES: Record<string, string> = {
   admin: "Admin", qualite: "Qualité", production: "Production", operateur: "Opérateur", lecture: "Lecture",
 };
@@ -167,7 +167,7 @@ function LotPanel({ lot, me, reasons, onChanged }: { lot: Lot; me: Me; reasons: 
     <div style={{ border: "1px solid #888", padding: 12, margin: "8px 0" }}>
       <p>
         <strong>{lot.code}</strong> · {lot.article_code} {lot.article_name} · lot fournisseur {lot.supplier_lot_code || "(aucun)"} ·{" "}
-        <strong>{LOT_STATUS[lot.status] || lot.status}</strong>
+        <LotStatusBadge status={lot.status} />
         {lot.expired && " · périmé"} · stock disponible : <strong>{withUnit(lot.balance, lot.base_unit)}</strong>
         {lot.block_reason && <> · motif du blocage : {lot.block_reason}</>}
       </p>
@@ -264,7 +264,7 @@ function ApprovalRow({ a, me, reasons, onChanged }: { a: Approval; me: Me; reaso
         <Person username={a.requested_by_username} /> ({ROLES[a.requested_role] || a.requested_role})
       </td>
       <td>
-        <strong>{STATUS[a.status] || a.status}</strong>
+        <StatusBadge status={a.status === "approved" ? "ok" : a.status === "rejected" ? "bad" : a.status === "pending" ? "warn" : "info"} text={STATUS[a.status] || a.status} />
         {a.decided_by_username && (
           <>
             <br />

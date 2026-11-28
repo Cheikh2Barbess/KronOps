@@ -48,6 +48,7 @@ INSTALLED_APPS = [
     "lots",
     "production",
     "shipping",
+    "dashboard",
 ]
 
 MIDDLEWARE = [

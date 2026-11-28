@@ -7,6 +7,7 @@ import { FormEvent, useState } from "react";
 import { OrganicBadge, day, errorText, when, withUnit } from "@/components/Codes";
 import { Run, YieldCell } from "@/components/Runs";
 import { api, ApiError } from "@/lib/api";
+import { LotStatusBadge, QcBadge, StatusBadge } from "@/components/Status";
 
 type Check = { result: string; checked_at: string; moisture_pct: string | null };
 type Lot = {
@@ -57,14 +58,13 @@ type Report = {
   summary: { producers: number; parcels: number; affected_lots: number; lots_in_stock: number; customers: number; containers: number };
 };
 
-const STATUS: Record<string, string> = { disponible: "Disponible", bloque: "Bloqué", detruit: "Détruit" };
 const table = { borderCollapse: "collapse" as const, width: "100%" };
 
 function QC({ check }: { check: Check | null }) {
-  if (!check) return <span style={{ color: "#8a5a00" }}>aucun contrôle</span>;
+  if (!check) return <StatusBadge status="warn" text="Aucun contrôle" />;
   return (
-    <span style={{ color: check.result === "conforme" ? "#1b5e20" : "#b00020" }}>
-      {check.result === "conforme" ? "Conforme" : "Non conforme"} le {day(check.checked_at)}
+    <span>
+      <QcBadge result={check.result} /> le {day(check.checked_at)}
     </span>
   );
 }
@@ -97,10 +97,10 @@ function LotRows({ lots, stock = false }: { lots: Lot[]; stock?: boolean }) {
             <td>{l.site_name || ""}</td>
             <td>
               {stock
-                ? `${withUnit(l.balance, l.base_unit)} · ${STATUS[l.status] || l.status}`
+                ? <>{withUnit(l.balance, l.base_unit)} <LotStatusBadge status={l.status} /></>
                 : Number(l.balance) === 0 && l.status !== "detruit"
                   ? "Épuisé (tout utilisé ou expédié)"
-                  : `${STATUS[l.status] || l.status} · ${withUnit(l.balance, l.base_unit)} en stock`}
+                  : <><LotStatusBadge status={l.status} /> {withUnit(l.balance, l.base_unit)} en stock</>}
             </td>
             <td>{l.article_type === "matiere" || l.article_type === "emballage" ? "" : <QC check={l.last_quality_check} />}</td>
           </tr>

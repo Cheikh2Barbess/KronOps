@@ -5,6 +5,7 @@
 import { FormEvent, useCallback, useEffect, useState } from "react";
 import { LateEntry, Option, OrganicBadge, errorText, lateFields, when, withUnit } from "@/components/Codes";
 import { api } from "@/lib/api";
+import { QcBadge, StatusBadge } from "@/components/Status";
 
 type Lot = {
   id: string;
@@ -97,9 +98,13 @@ export default function Qualite() {
           {lot && (
             <p style={{ margin: 0 }}>
               <OrganicBadge status={lot.organic_status} />{" "}
-              {lot.quality_checks && lot.quality_checks.length > 0
-                ? `Dernier contrôle : ${lot.quality_checks[0].result === "conforme" ? "conforme" : "non conforme"} le ${when(lot.quality_checks[0].checked_at)}.`
-                : "Aucun contrôle sur ce lot."}
+              {lot.quality_checks && lot.quality_checks.length > 0 ? (
+                <>
+                  Dernier contrôle : <QcBadge result={lot.quality_checks[0].result} /> le {when(lot.quality_checks[0].checked_at)}.
+                </>
+              ) : (
+                <StatusBadge status="warn" text="Aucun contrôle sur ce lot" />
+              )}
             </p>
           )}
           <table cellPadding={4}>

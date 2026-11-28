@@ -54,6 +54,7 @@ const ENTITY_TYPES: Record<string, string> = {
   "production.productionrun": "Étapes de production",
   "shipping.shipment": "Expéditions",
   "tenants.user": "Utilisateurs",
+  "dashboard.dashboardthreshold": "Seuils du tableau de bord",
 };
 // Nom de l'objet au singulier, en tete de la colonne « Objet ».
 const ENTITY_ONE: Record<string, string> = {
@@ -72,11 +73,14 @@ const ENTITY_ONE: Record<string, string> = {
   "production.productionrun": "Étape de production",
   "shipping.shipment": "Expédition",
   "tenants.user": "Utilisateur",
+  "dashboard.dashboardthreshold": "Seuil du tableau de bord",
 };
 
 // Libelles francais des champs enregistres dans le journal.
 const FIELDS: Record<string, string> = {
   code: "code",
+  green: "seuil vert",
+  red: "seuil rouge",
   name: "nom",
   article_type: "type",
   base_unit: "unité",
