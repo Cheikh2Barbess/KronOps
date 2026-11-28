@@ -1,22 +1,32 @@
-"""Demonstration « mangue sechee bio » pour un exportateur de fruits seches (pilote).
+"""Demonstration « fruits seches bio » pour un exportateur (mangue, ananas, coco), entreprise de demo a part.
 
 Cree une ENTREPRISE DE DEMONSTRATION a part, avec ses propres comptes : les donnees existantes ne sont
-jamais touchees. Producteurs, parcelles, sites, equipements, quantites, conteneur et certificat sont fictifs.
+jamais touchees. Producteurs, parcelles, sites, equipements, clients, conteneurs et certificats sont FICTIFS.
 
 --reset : archive l'entreprise de demo existante (renommee, desactivee, comptes bloques, rien d'efface)
 puis en recree une neuve. Le journal reste en insertion seule.
 
-Parcours montre : parcelles bio et en conversion, reception, murissement, un lot reparti sur deux
-sechoirs, cartons de vrac de 10 kg, palette, controle qualite, conteneur avec certificat d'inspection,
-bilan matiere avec un ecart signale, rappel depuis un carton.
-Rendement de sechage : 13 kg de mangue fraiche pour 1 kg sechee (Kent, Amelie), jusqu'a 18 pour 1
-(Brooks tardive), source publique COLEAD, etude sur la mangue transformee, 2023. Fourchette de l'article :
-5,5 a 7,7 %. L'historique est date de la saison passee : il est saisi « apres coup » (motif ressaisie).
+Chiffres de reference (sources publiques, citees dans le script de demo) :
+- Mangue : 13 kg fraiche pour 1 kg sechee (Amelie, Kent), jusqu'a 18 pour 1 en fin de saison (COLEAD, etude sur
+  la mangue transformee, 2023). Sechoir a tunnel : environ 220 kg de mangue sechee par cycle de 16 a 24 h (COLEAD).
+- Humidite maximale du produit sec : mangue 15 %, ananas 20 % (CBI, mangue et ananas seches), coco rapee 3 %
+  (norme APCC de la coco dessechee).
+- Eau du fruit frais : mangue 83,5 % (USDA FoodData Central 169910), ananas 86 % (USDA 169124), chair de coco 47 %
+  (USDA 170169). Part comestible : mangue environ 63 %, ananas environ 43 % (rapport des tables McCance et
+  Widdowson, CoFID 2021, chair seule et fruit entier).
+- Les fourchettes de rendement du sechage viennent d'un bilan de matiere seche (eau du frais, humidite visee) :
+  mangue 14 a 19 % de la pulpe, ananas 13 a 17 %, coco 50 a 55 %. Les rendements de murissement, de lavage, de tri,
+  de cassage et de parage sont FICTIFS (a remplacer par ceux du pilote).
+
+Horloge simulee : l'historique couvre une saison passee. Pour que chaque saisie porte une heure de saisie realiste
+(quelques minutes apres le geste), la commande avance une horloge simulee pendant la creation, puis rend l'heure
+reelle. Seules trois saisies sont volontairement tardives, avec leur motif. Rien n'est modifie apres coup :
+le journal et les mouvements restent en insertion seule.
 """
 
 import datetime
 import getpass
-from decimal import Decimal
+from decimal import ROUND_DOWN, Decimal
 
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError as DjangoValidationError
@@ -28,8 +38,9 @@ from catalog import services as catalog
 from catalog.selectors import allergen_codes
 from core.management.checks import ensure_database_migrated
 from core.tenancy import tenant_context
+from dashboard import services as dashboard
 from lots import services
-from lots.models import ApprovalRequest
+from lots.models import Movement
 from lots.reasons import QUALITY_CRITERIA
 from production import services as production
 from shipping import services as shipping
@@ -51,13 +62,13 @@ PRODUCERS = {
     "NAP-07": ("Coulibaly Souleymane (producteur démo)", "Napiéolédougou", "3.2", "bio"),
     "SIN-03": ("Soro Kalidou (producteur démo)", "Sinématiali", "4.5", "bio"),
     "KAR-12": ("Yéo Mariam (productrice démo)", "Karakoro", "2.8", "bio"),
+    "TIO-02": ("Tuo Lassina (producteur démo)", "Tioroniaradougou", "3.6", "bio"),
     "NIO-05": ("Silué Brahima (producteur démo)", "Niofoin", "1.9", "bio"),
     "BON-21": ("Kouamé Ahou (productrice démo)", "Bonoua", "6.0", "bio"),
-    "ADI-02": ("Aka Jean-Marc (producteur démo)", "Adiaké", "3.5", "conversion"),
-    "JAC-04": ("N'Guessan Koffi (producteur démo)", "Jacqueville", "5.0", "bio"),
-    # Producteurs de l'historique de saison (tableau de bord).
     "ALE-08": ("Ehui Clarisse (productrice démo)", "Alépé", "4.0", "bio"),
     "TIA-11": ("Konan Serge (producteur démo)", "Tiassalé", "5.5", "bio"),
+    "ADI-02": ("Aka Jean-Marc (producteur démo)", "Adiaké", "3.5", "conversion"),
+    "JAC-04": ("N'Guessan Koffi (producteur démo)", "Jacqueville", "5.0", "bio"),
     "GRB-06": ("Assi Marcelle (productrice démo)", "Grand-Bassam", "3.0", "bio"),
 }
 # Etapes de l'entreprise, dans l'ordre du procede fruits seches (mangue, ananas, coco). « Préparation » reste
@@ -71,24 +82,77 @@ ROUTES = {
     "Mangue séchée": (
         ["murissement", "lavage", "tri", "epluchage_decoupe", "pretraitement", "sechage", "tri_finition",
          "conditionnement", "palettisation"],
-        ["mangue", "mure", "sechee", "carton", "palette"],
+        ["mangue", "mure", "lavee", "pulpe", "sechee", "triee", "carton", "palette"],
     ),
     "Ananas séché": (
         ["lavage", "epluchage_decoupe", "sechage", "tri_finition", "conditionnement", "palettisation"],
-        ["ananas", "ananas_epluche", "ananas_seche", "ananas_carton"],
+        ["ananas", "ananas_lave", "ananas_epluche", "ananas_seche", "ananas_carton"],
     ),
     "Coco râpée séchée": (
         ["cassage", "parage", "lavage", "rapage", "pasteurisation", "sechage", "refroidissement",
          "conditionnement", "palettisation"],
-        ["coco", "coco_amande", "coco_paree", "coco_rapee", "coco_sechee", "coco_carton"],
+        ["coco", "coco_amande", "coco_paree", "coco_rapee", "coco_sechee", "coco_froide", "coco_carton"],
     ),
 }
-# Historique de la saison passee : saisi apres coup, avec son motif.
-LATE = {"late_reason_code": "ressaisie_papier"}
+H = datetime.timedelta(hours=1)
+MIN = datetime.timedelta(minutes=1)
+D = datetime.date
+
+# Mangue, saison 2026, usine Nord. (jour de reception, livraisons (parcelle, caisses de 20 kg), attente du fruit mur
+# avant l'epluchage en heures, sechoir, part de pulpe, rendement du sechage, humidite au controle).
+# 143 caisses = 2 860 kg = un cycle de sechoir (environ 220 kg seches a 13 pour 1, COLEAD). Parts de pulpe et
+# attentes FICTIVES. Fin de saison : rendement plus faible (COLEAD : jusqu'a 18 pour 1), signale « bas ».
+MANGO_HISTORY = [
+    (D(2026, 4, 13), [("NAP-07", 75), ("SIN-03", 68)], 56, "SEC-N1", "0.53", "0.150", "14.2"),
+    (D(2026, 4, 20), [("KAR-12", 70), ("TIO-02", 73)], 62, "SEC-N3", "0.52", "0.152", "13.8"),
+    (D(2026, 4, 27), [("NAP-07", 72), ("SIN-03", 71)], 58, "SEC-N1", "0.53", "0.148", "14.5"),
+    (D(2026, 5, 4), [("KAR-12", 75), ("TIO-02", 68)], 70, "SEC-N3", "0.52", "0.150", "13.6"),
+    (D(2026, 5, 11), [("NAP-07", 70), ("SIN-03", 73)], 74, "SEC-N1", "0.52", "0.151", "14.0"),
+    (D(2026, 5, 18), [("KAR-12", 74), ("TIO-02", 69)], 66, "SEC-N2", "0.52", "0.149", "13.9"),
+    (D(2026, 5, 25), [("NAP-07", 71), ("SIN-03", 72)], 80, "SEC-N3", "0.53", "0.150", "14.3"),
+    (D(2026, 6, 1), [("KAR-12", 73), ("TIO-02", 70)], 72, "SEC-N1", "0.52", "0.150", "14.1"),
+    (D(2026, 6, 23), [("NAP-07", 72), ("SIN-03", 71)], 60, "SEC-N1", "0.52", "0.148", "14.6"),
+    (D(2026, 6, 30), [("KAR-12", 70), ("TIO-02", 73)], 64, "SEC-N3", "0.51", "0.149", "14.4"),
+    (D(2026, 7, 7), [("NAP-07", 74), ("SIN-03", 69)], 56, "SEC-N2", "0.51", "0.147", "14.8"),
+    (D(2026, 7, 14), [("KAR-12", 72), ("TIO-02", 71)], 62, "SEC-N1", "0.50", "0.145", "13.9"),
+    (D(2026, 7, 21), [("NAP-07", 73), ("SIN-03", 70)], 52, "SEC-N3", "0.50", "0.142", "14.2"),
+    (D(2026, 7, 28), [("KAR-12", 71), ("TIO-02", 72)], 48, "SEC-N1", "0.48", "0.130", "14.7"),
+]
+MANGO_FOREIGN_BODY = 3  # carton de ce lot : corps etranger (fragment de noyau), bloque, retrie, debloque
+MANGO_LATE_RECEPTION = 4  # reception saisie 5 h apres, tablette indisponible
+
+# Ananas Pain de sucre, usine Sud. (date ou jours avant aujourd'hui, livraisons (parcelle, caisses de 15 kg),
+# humidite au controle ou None si pas encore controle). Environ 2 t fraiches par lot, pulpe 40 %, sechage 15 %.
+PINEAPPLE_HISTORY = [
+    (D(2026, 1, 12), [("ALE-08", 70), ("TIA-11", 63)], "16.2"),
+    (D(2026, 1, 26), [("BON-21", 72), ("ALE-08", 61)], "15.8"),
+    (D(2026, 2, 9), [("TIA-11", 68), ("BON-21", 65)], "17.1"),
+    (D(2026, 2, 23), [("ALE-08", 66), ("TIA-11", 67)], "16.5"),
+    (D(2026, 3, 9), [("BON-21", 70), ("ALE-08", 63)], "15.4"),
+    (D(2026, 3, 23), [("TIA-11", 71), ("BON-21", 62)], "16.9"),
+    (105, [("ALE-08", 69), ("TIA-11", 64)], "16.0"),
+    (91, [("BON-21", 70), ("ALE-08", 63)], "17.4"),
+    (77, [("TIA-11", 66), ("BON-21", 67)], "15.9"),
+    (63, [("ALE-08", 72), ("TIA-11", 61)], "16.7"),
+    (49, [("BON-21", 68), ("ALE-08", 65)], "16.3"),
+    (35, [("TIA-11", 70), ("BON-21", 63)], "17.0"),
+    (21, [("ALE-08", 67), ("TIA-11", 66)], "16.1"),
+    (9, [("BON-21", 71), ("ALE-08", 62)], None),
+]
+PINEAPPLE_LATE_DRYING = 9  # sechage declare le lendemain matin (oubli)
+# Lot en conversion seche a part (jamais melange au bio) : (jours avant aujourd'hui, caisses, humidite)
+PINEAPPLE_CONVERSION = (56, 80, "16.6")
+
+# Coco rapee, usine Sud. (jours avant aujourd'hui, parcelle, sacs de 50 kg, humidite au controle).
+COCONUT_HISTORY = [
+    (130, "GRB-06", 50, "2.8"), (112, "JAC-04", 50, "2.6"), (95, "GRB-06", 48, "2.9"), (78, "JAC-04", 50, "2.7"),
+    (60, "GRB-06", 52, "2.5"), (42, "JAC-04", 50, "2.9"), (25, "GRB-06", 50, "2.8"), (11, "JAC-04", 49, "2.6"),
+]
+COCONUT_LATE_RECEPTION = 3  # fiche papier ressaisie le lendemain
 
 
-def _at(day, hour=9):
-    return timezone.make_aware(datetime.datetime.combine(day, datetime.time(hour, 0)))
+def _at(day, hour=9, minute=0):
+    return timezone.make_aware(datetime.datetime.combine(day, datetime.time(hour, minute)))
 
 
 def _container(serial):
@@ -97,34 +161,39 @@ def _container(serial):
     return f"{first}{container_check_digit(first)}"
 
 
-H = datetime.timedelta(hours=1)
+def _kg(value):
+    return Decimal(value).quantize(Decimal("1"), rounding=ROUND_DOWN)
 
-# Historique de saison pour le tableau de bord. TOUTES CES VALEURS SONT FICTIVES (quantites, attentes, humidites).
-# Mangue : (jour, parcelle, caisses de 20 kg, attente avant sechage en h, sechoir, kg frais pour 1 kg seche,
-# humidite au controle). Ratios dans la fourchette publique COLEAD 13 a 18 pour 1, sauf un lot de fin de saison.
-MANGO_HISTORY = [
-    (datetime.date(2026, 4, 21), "NAP-07", 55, 30, "SEC-N1", "13.4", "16.2"),
-    (datetime.date(2026, 5, 5), "SIN-03", 70, 48, "SEC-N3", "14.1", "17.1"),
-    (datetime.date(2026, 5, 19), "KAR-12", 60, 70, "SEC-N1", "15.2", "15.8"),
-    (datetime.date(2026, 6, 2), "NAP-07", 75, 40, "SEC-N3", "13.0", "16.6"),
-    (datetime.date(2026, 6, 30), "SIN-03", 65, 76, "SEC-N1", "17.9", "17.4"),
-    (datetime.date(2026, 7, 14), "KAR-12", 80, 52, "SEC-N3", "19.0", "16.9"),
-    (datetime.date(2026, 7, 28), "NAP-07", 50, 36, "SEC-N1", "14.5", "15.5"),
-    (datetime.date(2026, 8, 11), "SIN-03", 60, 60, "SEC-N3", "13.8", "16.3"),
-]
-# Ananas, relatif a aujourd'hui : (jours avant aujourd'hui, parcelle, caisses de 15 kg, attente avant sechage en h,
-# humidite). Pas de fourchette de rendement : aucune valeur publique verifiee.
-PINEAPPLE_HISTORY = [
-    (95, "ALE-08", 150, 10, "12.5"), (80, "TIA-11", 170, 18, "13.0"), (65, "ALE-08", 140, 40, "12.8"),
-    (50, "TIA-11", 180, 64, "13.4"), (35, "ALE-08", 160, 22, "12.9"), (20, "TIA-11", 150, 30, "13.1"),
-    (10, "ALE-08", 165, 14, None),
-]
-# Coco, relatif a aujourd'hui : (jours avant aujourd'hui, sacs de 50 kg, humidite).
-COCONUT_HISTORY = [(75, 50, "3.1"), (45, 55, "2.8"), (25, 45, "3.4")]
+
+class SimulatedClock:
+    """Horloge de la demo : remplace django.utils.timezone.now pendant la creation, puis rend l'heure reelle.
+
+    Ne sert qu'a dater les saisies de l'historique comme si elles avaient ete faites au fil de la saison.
+    Elle n'avance jamais au-dela de l'heure reelle.
+    """
+
+    def __init__(self):
+        self._real = timezone.now
+        self.limit = self._real()
+        self.current = None
+
+    def __enter__(self):
+        timezone.now = self._now
+        return self
+
+    def __exit__(self, *exc):
+        timezone.now = self._real
+        return False
+
+    def _now(self):
+        return self.current if self.current is not None else self._real()
+
+    def set(self, when):
+        self.current = min(when, self.limit)
 
 
 class Command(BaseCommand):
-    help = "Cree une entreprise de demonstration « mangue sechee bio » avec ses comptes et son historique."
+    help = "Cree une entreprise de demonstration « fruits seches bio » avec ses comptes et une saison d'historique."
 
     def add_arguments(self, parser):
         parser.add_argument(
@@ -193,10 +262,33 @@ class Demo:
         self.t, self.admin, self.password = tenant_id, admin, password
         self.users = {}
         self.parcels = {}
+        self.boxes = {}  # site -> [lot de cartons vides, cartons restants, date de livraison]
+        self.clock = None
 
-    # Comptes ---------------------------------------------------------------
+    @property
+    def op(self):
+        return self.users[User.Role.OPERATEUR]
 
-    def _accounts(self):
+    @property
+    def prod(self):
+        return self.users[User.Role.PRODUCTION]
+
+    @property
+    def qa(self):
+        return self.users[User.Role.QUALITE]
+
+    def _when(self, at, delay=15, late=None):
+        """Heure de saisie : quelques minutes apres le geste, ou bien plus tard pour une saisie tardive."""
+        if late:
+            self.clock.set(at + late[1])
+            return {"late_reason_code": late[0]}
+        self.clock.set(at + delay * MIN)
+        return {}
+
+    # Comptes et referentiels ------------------------------------------------------
+
+    def _accounts(self, at):
+        self.clock.set(at)
         username, _, first, last, job = ACCOUNTS[0]
         tenants.update_user(tenant_id=self.t, user=self.admin, target=self.admin, first_name=first, last_name=last,
                             job_title=job)
@@ -207,16 +299,16 @@ class Demo:
                 first_name=first, last_name=last, job_title=job, manager=self.admin,
             )
 
-    # Referentiels ------------------------------------------------------------
-
     def _catalog(self):
         t, u = self.t, self.admin
         absent = {c: "absent" for c in allergen_codes()}
         a = {}
 
-        def article(key, code, name, kind, unit="kg", conversion=None, **extra):
+        def article(key, code, name, kind, unit="kg", conversion=None, band=None, **extra):
             if kind == "matiere":
                 extra["allergens"] = absent
+            if band:
+                extra["yield_min_pct"], extra["yield_max_pct"] = Decimal(band[0]), Decimal(band[1])
             a[key] = catalog.create_article(tenant_id=t, user=u, code=code, name=name, article_type=kind,
                                             base_unit=unit, storage="" if kind == "emballage" else "ambiant", **extra)
             if conversion:
@@ -224,27 +316,32 @@ class Demo:
                                           factor=Decimal(conversion[1]))
 
         article("mangue", "MGAF", "Mangue Amélie fraîche", "matiere", conversion=("caisse", "20"))
-        # Rendement de reference du murissement : VALEUR FICTIVE de demonstration (95 a 100 %), a remplacer par
-        # celle du pilote dans les referentiels.
-        article("mure", "MGAM", "Mangue Amélie mûre", "matiere", yield_min_pct=Decimal("95"), yield_max_pct=Decimal("100"))
-        # Fourchette COLEAD 2023 : 13:1 (7,7 %) a 18:1 (5,6 %).
+        # Perte de poids au murissement : fourchette FICTIVE, a remplacer par celle du pilote.
+        article("mure", "MGAM", "Mangue Amélie mûre", "matiere", band=("95", "100"))
+        article("lavee", "MGAL", "Mangue lavée et triée", "semi_fini", shelf_life_days=2)
+        article("pulpe", "MGAD", "Mangue épluchée en tranches", "semi_fini", shelf_life_days=1)
+        # Bilan de matiere seche : pulpe a 83,5 % d'eau (USDA), sechee a 14 % : 19,2 % au plus, sans aucune perte.
         article("sechee", "MGAS", "Mangue Amélie séchée en vrac", "semi_fini", shelf_life_days=365,
-                yield_min_pct=Decimal("5.5"), yield_max_pct=Decimal("7.7"))
+                band=("14", "19"))
+        article("triee", "MGAT", "Mangue séchée triée", "semi_fini", shelf_life_days=365)
         article("carton", "MGAC", "Mangue séchée, carton vrac 10 kg", "fini", conversion=("carton", "10"),
                 shelf_life_days=365)
         article("palette", "MGAP", "Mangue séchée, palette de cartons", "fini", shelf_life_days=365)
         article("ananas", "ANAF", "Ananas Pain de sucre frais", "matiere", conversion=("caisse", "15"))
-        # Ananas et coco : pas de fourchette de rendement (aucune valeur publique verifiee, a fournir par le pilote).
-        # Les quantites de l'historique ananas et coco sont FICTIVES.
-        article("ananas_epluche", "ANAP", "Ananas épluché tranché", "semi_fini", shelf_life_days=2)
-        article("ananas_seche", "ANAS", "Ananas séché en vrac", "semi_fini", shelf_life_days=365)
+        article("ananas_lave", "ANAL", "Ananas lavé", "semi_fini", shelf_life_days=2)
+        article("ananas_epluche", "ANAP", "Ananas épluché tranché", "semi_fini", shelf_life_days=1)
+        # Pulpe a 86 % d'eau (USDA), sechee a 16 % : 16,7 % au plus.
+        article("ananas_seche", "ANAS", "Ananas séché en vrac", "semi_fini", shelf_life_days=365, band=("13", "17"))
         article("ananas_carton", "ANAC", "Ananas séché, carton vrac 10 kg", "fini", conversion=("carton", "10"),
                 shelf_life_days=365)
         article("coco", "COCF", "Noix de coco décortiquée", "matiere", conversion=("sac", "50"))
         article("coco_amande", "COCA", "Amande de coco écalée", "semi_fini", shelf_life_days=2)
         article("coco_paree", "COCB", "Amande de coco parée", "semi_fini", shelf_life_days=2)
         article("coco_rapee", "COCR", "Coco râpée humide", "semi_fini", shelf_life_days=1)
-        article("coco_sechee", "COCS", "Coco râpée séchée en vrac", "semi_fini", shelf_life_days=365)
+        # Chair a 47 % d'eau (USDA), sechee a 3 % : 54,6 % au plus.
+        article("coco_sechee", "COCS", "Coco râpée séchée en vrac", "semi_fini", shelf_life_days=365,
+                band=("50", "55"))
+        article("coco_froide", "COCT", "Coco râpée séchée refroidie", "semi_fini", shelf_life_days=365)
         article("coco_carton", "COCK", "Coco râpée séchée, carton 10 kg", "fini", conversion=("carton", "10"),
                 shelf_life_days=365)
         article("carton_vide", "CTV10", "Carton kraft vide 10 kg avec sac intérieur", "emballage", unit="unite",
@@ -291,12 +388,18 @@ class Demo:
         e = {}
         for code, name, kind, site in [
             ("MUR-N1", "Aire de mûrissement Nord", "murissement", nord),
-            ("SEC-N1", "Séchoir Nord 1", "sechoir", nord),
-            ("SEC-N2", "Séchoir Nord 2", "sechoir", nord),
-            ("SEC-N3", "Séchoir Nord 3", "sechoir", nord),
+            ("LAV-N1", "Bac de lavage Nord", "preparation", nord),
+            ("TRI-N1", "Table de tri Nord", "tri", nord),
+            ("EPL-N1", "Table d'épluchage Nord", "preparation", nord),
+            ("PRT-N1", "Bac de trempage Nord", "preparation", nord),
+            ("SEC-N1", "Séchoir tunnel Nord 1", "sechoir", nord),
+            ("SEC-N2", "Séchoir tunnel Nord 2", "sechoir", nord),
+            ("SEC-N3", "Séchoir tunnel Nord 3", "sechoir", nord),
+            ("TRF-N1", "Table de tri finition Nord", "tri", nord),
             ("CDT-N1", "Ligne de conditionnement Nord", "conditionnement", nord),
-            ("SEC-S1", "Séchoir Sud 1", "sechoir", sud),
+            ("LAV-S1", "Bac de lavage Sud", "preparation", sud),
             ("PRE-S1", "Table d'épluchage Sud", "preparation", sud),
+            ("SEC-S1", "Séchoir Sud 1 (ananas)", "sechoir", sud),
             ("CAS-S1", "Poste de cassage coco Sud", "preparation", sud),
             ("RAP-S1", "Râpeuse coco Sud", "preparation", sud),
             ("PAS-S1", "Pasteurisateur Sud", "autre", sud),
@@ -308,263 +411,373 @@ class Demo:
                                                   site=site)
         return {"nord": nord, "sud": sud}, e
 
-    # Historique --------------------------------------------------------------
+    # Saisies ----------------------------------------------------------------------
 
-    def _receive(self, article, parcel, caisses, day, site, visual_ok=True, reason_code="", unit="caisse"):
+    def _receive(self, article, parcel, count, at, site, unit="caisse", visual_ok=True, reason_code="",
+                 temperature="29.5", late=None):
         parcel = self.parcels[parcel]
         return services.receive_lot(
-            tenant_id=self.t, user=self.users[User.Role.OPERATEUR], article=article, supplier=parcel.producer,
-            supplier_lot_code="", parcel=parcel, quantity=Decimal(caisses), unit=unit, date_type="ddm",
+            tenant_id=self.t, user=self.op, article=article, supplier=parcel.producer, supplier_lot_code="",
+            parcel=parcel, quantity=Decimal(count), unit=unit, date_type="ddm",
             # Fruit frais : date courte, simple repere de fraicheur.
-            expiry_date=day + datetime.timedelta(days=10), visual_ok=visual_ok, reason_code=reason_code,
-            occurred_at=_at(day, 8), site=site, **LATE,
+            expiry_date=at.date() + datetime.timedelta(days=10), visual_ok=visual_ok, reason_code=reason_code,
+            temperature_c=Decimal(temperature), occurred_at=at, site=site, **self._when(at, late=late),
         )
 
-    def _run(self, step, equipment, inputs, article, quantity, start, end, unit=None, waste=None, user=None):
-        """Declaration d'etape, saisie apres coup (historique de la saison passee)."""
+    def _run(self, step, equipment, inputs, article, quantity, start, end, unit=None, waste=None, user=None,
+             late=None):
         return production.declare_run(
-            tenant_id=self.t, user=user or self.users[User.Role.PRODUCTION], step=step, equipment=equipment,
+            tenant_id=self.t, user=user or self.prod, step=step, equipment=equipment,
             inputs=[(lot, Decimal(q)) for lot, q in inputs], output_article=article, output_quantity=Decimal(quantity),
             output_unit=unit, started_at=start, ended_at=end,
             waste_quantity=Decimal(waste[0]) if waste else None, waste_code=waste[1] if waste else "",
-            waste_comment=waste[2] if waste and len(waste) > 2 else "", **LATE,
+            waste_comment=waste[2] if waste and len(waste) > 2 else "", **self._when(end, delay=20, late=late),
         ).output_lot
 
-    def _qc_at(self, lot, at, moisture):
+    def _qc(self, lot, at, moisture, failed=(), comment=""):
         return services.record_quality_check(
-            tenant_id=self.t, user=self.users[User.Role.QUALITE], lot_id=lot.id, moisture_pct=Decimal(moisture),
-            checks={code: "ok" for code in QUALITY_CRITERIA}, checked_at=at, **LATE,
-        )
-
-    def _qc(self, lot, day, hour, moisture, failed=(), comment=""):
-        return services.record_quality_check(
-            tenant_id=self.t, user=self.users[User.Role.QUALITE], lot_id=lot.id, moisture_pct=Decimal(moisture),
+            tenant_id=self.t, user=self.qa, lot_id=lot.id, moisture_pct=Decimal(moisture),
             checks={code: "nok" if code in failed else "ok" for code in QUALITY_CRITERIA}, comment=comment,
-            checked_at=_at(day, hour), **LATE,
+            checked_at=at, **self._when(at, delay=10),
         )
 
-    def _history(self, a, p, e, nord, sud):
-        """Saison complete, pour des courbes et des tuiles credibles au tableau de bord. Valeurs FICTIVES."""
-        d = datetime.date
-        prod = self.users[User.Role.PRODUCTION]
-        ship_lots = {}
+    def _ship(self, lines, at, customer, serial, site, bl=True):
+        return shipping.create_shipment(
+            tenant_id=self.t, user=self.prod, customer=customer, lines=lines, shipped_at=at,
+            container_number=_container(serial), seal_number=f"SCELLE-DEMO-{serial}",
+            export_document_ref=f"COI.CI.2026.DEMO-{serial}", bill_of_lading=f"BL-DEMO-{serial}" if bl else "",
+            site=site, **self._when(at, delay=40),
+        )
 
-        def cartons(site, day, paquets):
-            return services.receive_lot(
-                tenant_id=self.t, user=self.users[User.Role.OPERATEUR], article=a["carton_vide"],
-                supplier=p["emballages"], supplier_lot_code=f"EL-HIST-{day:%m%d}", quantity=Decimal(paquets),
-                unit="paquet", occurred_at=_at(day, 7), site=site, **LATE,
+    def _boxes_for(self, site, n, at):
+        """Lot de cartons vides de l'usine avec assez de cartons. Nouvelle livraison (6 paquets de 50) au besoin."""
+        current = self.boxes.get(site.id)
+        if current is None or current[1] < n or current[2] > at:
+            day = at - 24 * H
+            lot = services.receive_lot(
+                tenant_id=self.t, user=self.op, article=self.a["carton_vide"], supplier=self.p["emballages"],
+                supplier_lot_code=f"EL-{day:%y%m%d}-{site.name[6]}", quantity=Decimal("6"), unit="paquet",
+                occurred_at=day, site=site, **self._when(day),
             )
+            current = self.boxes[site.id] = [lot, 300, day]
+        current[1] -= n
+        return current[0]
 
-        def pack(dried, kg, box_article, boxes, at, equipment):
-            n = int(kg // 10)
-            return self._run("conditionnement", e[equipment], [(dried, str(kg)), (boxes, str(n))], box_article, str(n),
-                             at, at + 3 * H, unit="carton", waste=(str(kg - n * 10), "chutes") if kg - n * 10 else None)
+    def _pack(self, dried, kg, article, at, equipment, site, cartons=None):
+        """Conditionnement en cartons de 10 kg. Le reste (moins de 10 kg) part en chutes."""
+        n = cartons if cartons is not None else int(kg // 10)
+        rest = kg - n * 10
+        boxes = self._boxes_for(site, n, at)
+        return self._run("conditionnement", equipment, [(dried, str(kg)), (boxes, str(n))], article, str(n), at,
+                         at + 3 * H, unit="carton", waste=(str(rest), "chutes") if rest else None)
 
-        # Mangue, usine Nord.
-        boxes = cartons(nord, d(2026, 4, 20), "20")
-        for i, (day, parcel, caisses, wait, dryer, ratio, moisture) in enumerate(MANGO_HISTORY):
-            lot = self._receive(a["mangue"], parcel, str(caisses), day, nord)
-            kg = caisses * 20
-            ripe_kg = kg * (97 + i % 3) // 100
-            ripe_end = _at(day + datetime.timedelta(days=3), 7)
-            ripe = self._run("murissement", e["MUR-N1"], [(lot, str(kg))], a["mure"], str(ripe_kg), _at(day, 14), ripe_end)
-            dry_start = ripe_end + wait * H
-            dried_kg = int(Decimal(ripe_kg) / Decimal(ratio))
-            dried = self._run("sechage", e[dryer], [(ripe, str(ripe_kg))], a["sechee"], str(dried_kg), dry_start,
-                              dry_start + 22 * H, waste=(str(ripe_kg * 3 // 10), "peaux_noyaux"))
-            carton = pack(dried, dried_kg, a["carton"], boxes, dry_start + 46 * H, "CDT-N1")
-            self._qc_at(carton, dry_start + 50 * H, moisture)
-            ship_lots[("mangue", i)] = carton
+    # Mangue -------------------------------------------------------------------------
 
-        def ship(keys, day, customer, serial, site, bl=True):
-            lines = []
-            for k in keys:
-                lot = ship_lots[k]
-                lines.append((lot, Decimal(lot.production_run.output_quantity), None))
-            shipping.create_shipment(
-                tenant_id=self.t, user=prod, customer=p[customer], lines=lines, shipped_at=_at(day, 7),
-                container_number=_container(serial), seal_number=f"SCELLE-DEMO-H{serial}",
-                export_document_ref=f"COI.CI.2026.DEMO-H{serial}", bill_of_lading=f"BL-DEMO-H{serial}" if bl else "",
-                site=site, **LATE,
-            )
+    def _mango_batch(self, i, row, nord):
+        a, e = self.a, self.e
+        day, deliveries, wait, dryer, pulp, dry, moisture = row
+        lots = []
+        for j, (parcel, caisses) in enumerate(deliveries):
+            late = ("tablette_indisponible", 5 * H) if i == MANGO_LATE_RECEPTION and j == 0 else None
+            lots.append(self._receive(a["mangue"], parcel, str(caisses), _at(day, 7, 10 + 25 * j), nord, late=late))
+        if i == 5:
+            # Saisie en double a la reception, annulee aussitot par le receptionnaire (contre-mouvement, motif code).
+            twice = self._receive(a["mangue"], deliveries[0][0], str(deliveries[0][1]), _at(day, 7, 10), nord)
+            self.clock.set(_at(day, 8, 5))
+            entry = Movement.objects.get(lot=twice, movement_type=Movement.Type.RECEPTION)
+            services.reverse_movement(tenant_id=self.t, user=self.op, movement_id=entry.id, reason_code="doublon")
+        fresh = sum(c for _, c in deliveries) * 20
+        ripe_kg = _kg(fresh * Decimal("0.98"))
+        ripe_end = _at(day + datetime.timedelta(days=3), 7)
+        ripe = self._run("murissement", e["MUR-N1"], [(lot, str(c * 20)) for lot, (_, c) in zip(lots, deliveries)],
+                         a["mure"], str(ripe_kg), _at(day, 9), ripe_end)
+        peel_start = ripe_end + wait * H
+        pulp_kg = _kg(ripe_kg * Decimal(pulp))
+        peeled = self._run("epluchage_decoupe", e["EPL-N1"], [(ripe, str(ripe_kg))], a["pulpe"], str(pulp_kg),
+                           peel_start, peel_start + 6 * H, waste=(str(ripe_kg - pulp_kg), "peaux_noyaux"))
+        dry_start = peel_start + 7 * H
+        dried_kg = _kg(pulp_kg * Decimal(dry))
+        dried = self._run("sechage", e[dryer], [(peeled, str(pulp_kg))], a["sechee"], str(dried_kg), dry_start,
+                          dry_start + 20 * H)
+        pack_at = dry_start + 22 * H
+        carton = self._pack(dried, dried_kg, a["carton"], pack_at, e["CDT-N1"], nord)
+        check_at = pack_at + 4 * H
+        if i == MANGO_FOREIGN_BODY:
+            # Fragment de noyau trouve : lot bloque automatiquement, retrie, debloque apres double validation
+            # (Qualite demande, Production valide), puis nouveau controle conforme.
+            self._qc(carton, check_at, moisture, failed=("corps_etrangers",))
+            self.clock.set(check_at + 2 * H)
+            req = services.request_approval(tenant_id=self.t, user=self.qa, lot_id=carton.id, action="release",
+                                            reason_code="cause_corrigee")
+            self.clock.set(check_at + 5 * H)
+            services.approve_request(tenant_id=self.t, user=self.prod, request_id=req.id)
+            self._qc(carton, check_at + 6 * H, moisture)
+        else:
+            self._qc(carton, check_at, moisture)
+        return carton
 
-        ship([("mangue", 0), ("mangue", 1)], d(2026, 5, 15), "rotterdam", "260501", nord)
-        ship([("mangue", 2), ("mangue", 3)], d(2026, 6, 12), "lyon", "260601", nord)
-        ship([("mangue", 4), ("mangue", 5)], d(2026, 7, 24), "rotterdam", "260701", nord)
-        # Sans connaissement : l'expedition passe en jaune au tableau de bord. Le dernier lot reste en stock.
-        ship([("mangue", 6)], d(2026, 8, 6), "hambourg", "260801", nord, bl=False)
+    def _mango(self, nord, sud):
+        a, e, p = self.a, self.e, self.p
+        cartons = [self._mango_batch(i, row, nord) for i, row in enumerate(MANGO_HISTORY)]
 
-        # Ananas, usine Sud : epluchage (environ 55 %), sechage, cartons.
-        today = timezone.localdate()
-        boxes_sud = cartons(sud, today - datetime.timedelta(days=100), "20")
-        for i, (ago, parcel, caisses, wait, moisture) in enumerate(PINEAPPLE_HISTORY):
+        # Lot du 9 juin, montre en direct : trois parcelles bio, toutes les etapes du parcours, deux sechoirs.
+        day = D(2026, 6, 9)
+        r1 = self._receive(a["mangue"], "NAP-07", "75", _at(day, 7, 5), nord, temperature="28.5")
+        r2 = self._receive(a["mangue"], "SIN-03", "70", _at(day, 7, 30), nord, temperature="29.0")
+        r3 = self._receive(a["mangue"], "KAR-12", "75", _at(day, 7, 55), nord, temperature="29.5")
+        # Livraison refusee (piqures de mouche des fruits) : bloquee a la reception, detruite apres double validation.
+        bad = self._receive(a["mangue"], "NIO-05", "40", _at(day, 8, 20), nord, visual_ok=False,
+                            reason_code="contamination", temperature="31.0")
+        self.clock.set(_at(day, 9, 30))
+        req = services.request_approval(tenant_id=self.t, user=self.qa, lot_id=bad.id, action="destroy",
+                                        reason_code="contamination")
+        self.clock.set(_at(day, 10, 15))
+        services.approve_request(tenant_id=self.t, user=self.prod, request_id=req.id)
+
+        mure = self._run("murissement", e["MUR-N1"], [(r1, "1500"), (r2, "1400"), (r3, "1500")], a["mure"], "4312",
+                         _at(day, 9), _at(day + datetime.timedelta(days=3), 7))
+        d12 = day + datetime.timedelta(days=3)
+        lavee = self._run("lavage", e["LAV-N1"], [(mure, "4312")], a["lavee"], "4300", _at(d12, 7, 30),
+                          _at(d12, 9), waste=("12", "fruits_abimes"), user=self.op)
+        triee = self._run("tri", e["TRI-N1"], [(lavee, "4300")], a["lavee"], "4170", _at(d12, 9), _at(d12, 11),
+                          waste=("130", "fruits_abimes"), user=self.op)
+        pulp1 = self._run("epluchage_decoupe", e["EPL-N1"], [(triee, "2085")], a["pulpe"], "1105", _at(d12, 11),
+                          _at(d12, 15), waste=("980", "peaux_noyaux"))
+        pulp2 = self._run("epluchage_decoupe", e["EPL-N1"], [(triee, "2085")], a["pulpe"], "1084", _at(d12, 12),
+                          _at(d12, 16), waste=("1001", "peaux_noyaux"))
+        # Trempage au jus de citron (pas de sulfites en bio) : un peu d'egouttage.
+        pre1 = self._run("pretraitement", e["PRT-N1"], [(pulp1, "1105")], a["pulpe"], "1100", _at(d12, 15),
+                         _at(d12, 16), waste=("5", "chutes"))
+        pre2 = self._run("pretraitement", e["PRT-N1"], [(pulp2, "1084")], a["pulpe"], "1080", _at(d12, 16),
+                         _at(d12, 17), waste=("4", "chutes"))
+        d13 = d12 + datetime.timedelta(days=1)
+        sec1 = self._run("sechage", e["SEC-N1"], [(pre1, "1100")], a["sechee"], "165", _at(d12, 17), _at(d13, 13))
+        # Sechoir 2 : 13 % de la pulpe, sous la fourchette (14 a 19 %). Ecart signale au bilan matiere.
+        sec2 = self._run("sechage", e["SEC-N2"], [(pre2, "1080")], a["sechee"], "140", _at(d12, 18), _at(d13, 14))
+        t1 = self._run("tri_finition", e["TRF-N1"], [(sec1, "165")], a["triee"], "162", _at(d13, 15), _at(d13, 17),
+                       waste=("3", "chutes"))
+        t2 = self._run("tri_finition", e["TRF-N1"], [(sec2, "140")], a["triee"], "137", _at(d13, 15, 30),
+                       _at(d13, 17, 30), waste=("3", "chutes"))
+        d15 = d13 + datetime.timedelta(days=2)
+        c1 = self._pack(t1, 162, a["carton"], _at(d15, 8), e["CDT-N1"], nord)
+        c2 = self._pack(t2, 137, a["carton"], _at(d15, 12), e["CDT-N1"], nord)
+        self._qc(c1, _at(d15, 12), "14.1")
+        self._qc(c2, _at(d15, 16), "14.6")
+        pal = self._run("palettisation", e["CDT-N1"], [(c1, "160"), (c2, "130")], a["palette"], "290",
+                        _at(d15 + datetime.timedelta(days=1), 9), _at(d15 + datetime.timedelta(days=1), 10))
+        self._ship([(pal, Decimal("290"), None)], _at(D(2026, 7, 6), 7), p["rotterdam"], "260600", nord)
+
+        # Lot du 16 juin : premiere declaration de murissement avec une mauvaise quantite, annulee avec motif.
+        # Les mangues reviennent en stock, le lot produit par erreur est bloque, puis la bonne declaration suit.
+        day = D(2026, 6, 16)
+        r4 = self._receive(a["mangue"], "TIO-02", "70", _at(day, 7, 10), nord)
+        r5 = self._receive(a["mangue"], "SIN-03", "73", _at(day, 7, 35), nord)
+        d19 = day + datetime.timedelta(days=3)
+        erreur = self._run("murissement", e["MUR-N1"], [(r4, "1400"), (r5, "1460")], a["mure"], "2420",
+                           _at(day, 9), _at(d19, 7))
+        self.clock.set(_at(d19, 7, 50))
+        production.cancel_run(tenant_id=self.t, user=self.prod, run_id=erreur.production_run.id,
+                              reason_code="mauvaise_quantite")
+        mure2 = self._run("murissement", e["MUR-N1"], [(r4, "1400"), (r5, "1460")], a["mure"], "2803",
+                          _at(day, 9), _at(d19, 7, 45))
+        tri2 = self._run("tri", e["TRI-N1"], [(mure2, "2803")], a["lavee"], "2720", _at(d19, 8), _at(d19, 10),
+                         waste=("83", "fruits_abimes"), user=self.op)
+        pulp3 = self._run("epluchage_decoupe", e["EPL-N1"], [(tri2, "2720")], a["pulpe"], "1414", _at(d19, 10),
+                          _at(d19, 16), waste=("1306", "peaux_noyaux"))
+        d20 = d19 + datetime.timedelta(days=1)
+        sec3 = self._run("sechage", e["SEC-N3"], [(pulp3, "1414")], a["sechee"], "212", _at(d19, 17), _at(d20, 13))
+        tri3 = self._run("tri_finition", e["TRF-N1"], [(sec3, "212")], a["triee"], "208", _at(d20, 14),
+                         _at(d20, 16), waste=("4", "chutes"))
+        c3 = self._pack(tri3, 208, a["carton"], _at(d20 + datetime.timedelta(days=2), 8), e["CDT-N1"], nord)
+        self._qc(c3, _at(d20 + datetime.timedelta(days=2), 12), "13.9")
+        self._ship([(c3, Decimal("8"), "carton")], _at(D(2026, 7, 9), 7), p["lyon"], "260700", nord)
+
+        # Expeditions de la saison, en groupage (LCL) : quelques centaines de cartons par client et par mois.
+        def lines(indexes):
+            return [(cartons[i], Decimal(cartons[i].production_run.output_quantity), None) for i in indexes]
+
+        self._ship(lines([0, 1, 2]), _at(D(2026, 5, 8), 7), p["rotterdam"], "260500", nord)
+        self._ship(lines([3, 4, 5]), _at(D(2026, 5, 29), 7), p["lyon"], "260501", nord)
+        self._ship(lines([6, 7]), _at(D(2026, 6, 19), 7), p["hambourg"], "260601", nord)
+        self._ship(lines([8, 9, 10]), _at(D(2026, 7, 24), 7), p["rotterdam"], "260701", nord)
+        # Sans connaissement (BL) : l'expedition passe en jaune au tableau de bord.
+        self._ship(lines([11, 12]), _at(D(2026, 8, 14), 7), p["hambourg"], "260800", nord, bl=False)
+        return {"c2": c2, "bad": bad, "last": cartons[-1], "c3": c3}
+
+    # Ananas -------------------------------------------------------------------------
+
+    def _pineapple_batch(self, i, day, deliveries, moisture, sud):
+        a, e = self.a, self.e
+        lots = [self._receive(a["ananas"], parcel, str(c), _at(day, 7, 10 + 20 * j), sud, temperature="27.5")
+                for j, (parcel, c) in enumerate(deliveries)]
+        fresh = sum(c for _, c in deliveries) * 15
+        washed = _kg(fresh * Decimal("0.995"))
+        lave = self._run("lavage", e["LAV-S1"], [(lot, str(c * 15)) for lot, (_, c) in zip(lots, deliveries)],
+                         a["ananas_lave"], str(washed), _at(day, 8, 30), _at(day, 10),
+                         waste=(str(fresh - washed), "fruits_abimes"), user=self.op)
+        flesh = _kg(washed * Decimal("0.40"))
+        peeled = self._run("epluchage_decoupe", e["PRE-S1"], [(lave, str(washed))], a["ananas_epluche"], str(flesh),
+                           _at(day, 10, 30), _at(day, 15), waste=(str(washed - flesh), "peaux_noyaux"))
+        dried_kg = _kg(flesh * Decimal("0.15"))
+        next_day = day + datetime.timedelta(days=1)
+        late = ("oubli", 10 * H) if i == PINEAPPLE_LATE_DRYING else None
+        dried = self._run("sechage", e["SEC-S1"], [(peeled, str(flesh))], a["ananas_seche"], str(dried_kg),
+                          _at(day, 16), _at(next_day, 10), late=late)
+        carton = self._pack(dried, dried_kg, a["ananas_carton"], _at(next_day, 11), e["CDT-S1"], sud)
+        if moisture:
+            self._qc(carton, _at(next_day, 15), moisture)
+        return carton
+
+    def _pineapple(self, nord, sud, today):
+        a, e, p = self.a, self.e, self.p
+        cartons = []
+        for i, (when, deliveries, moisture) in enumerate(PINEAPPLE_HISTORY):
+            day = when if isinstance(when, D) else today - datetime.timedelta(days=when)
+            cartons.append(self._pineapple_batch(i, day, deliveries, moisture, sud))
+
+        def lines(indexes):
+            return [(cartons[i], Decimal(cartons[i].production_run.output_quantity), None) for i in indexes]
+
+        self._ship(lines([0, 1, 2]), _at(D(2026, 2, 20), 7), p["lyon"], "260200", sud)
+        self._ship(lines([3, 4, 5]), _at(D(2026, 4, 3), 7), p["rotterdam"], "260400", sud)
+        self._ship(lines([6, 7, 8]), _at(today - datetime.timedelta(days=60), 7), p["lyon"], "261000", sud)
+        self._ship(lines([9, 10, 11]), _at(today - datetime.timedelta(days=28), 7), p["hambourg"], "261100", sud)
+        self._ship(lines([12]), _at(today - datetime.timedelta(days=14), 7), p["rotterdam"], "261101", sud)
+
+        # Producteur en conversion : seche a part, jamais melange au bio, controle et garde en stock.
+        ago, caisses, moisture = PINEAPPLE_CONVERSION
+        day = today - datetime.timedelta(days=ago)
+        conv = self._receive(a["ananas"], "ADI-02", str(caisses), _at(day, 7, 30), sud)
+        fresh = caisses * 15
+        lave = self._run("lavage", e["LAV-S1"], [(conv, str(fresh))], a["ananas_lave"], str(fresh - 6),
+                         _at(day, 8, 30), _at(day, 9, 30), waste=("6", "fruits_abimes"), user=self.op)
+        flesh = _kg((fresh - 6) * Decimal("0.40"))
+        peeled = self._run("epluchage_decoupe", e["PRE-S1"], [(lave, str(fresh - 6))], a["ananas_epluche"],
+                           str(flesh), _at(day, 10), _at(day, 13), waste=(str(fresh - 6 - flesh), "peaux_noyaux"))
+        dried_kg = _kg(flesh * Decimal("0.15"))
+        dried = self._run("sechage", e["SEC-S1"], [(peeled, str(flesh))], a["ananas_seche"], str(dried_kg),
+                          _at(day, 14), _at(day + datetime.timedelta(days=1), 8))
+        conv_carton = self._pack(dried, dried_kg, a["ananas_carton"], _at(day + datetime.timedelta(days=1), 9),
+                                 e["CDT-S1"], sud)
+        self._qc(conv_carton, _at(day + datetime.timedelta(days=1), 13), moisture)
+
+        # Lot montre en direct, recu avant-hier : 3 t de la parcelle BON-21, 2,4 t traitees (un cycle de sechoir),
+        # le reste attend. Le lot seche attend l'analyse de residus de pesticides : bloque, a debloquer en direct.
+        day = today - datetime.timedelta(days=2)
+        r6 = self._receive(a["ananas"], "BON-21", "200", _at(day, 7, 5), sud, temperature="27.0")
+        conv2 = self._receive(a["ananas"], "ADI-02", "40", _at(day, 7, 40), sud, temperature="27.5")
+        lave = self._run("lavage", e["LAV-S1"], [(r6, "2400")], a["ananas_lave"], "2388", _at(day, 8, 30),
+                         _at(day, 10), waste=("12", "fruits_abimes"), user=self.op)
+        peeled = self._run("epluchage_decoupe", e["PRE-S1"], [(lave, "2388")], a["ananas_epluche"], "955",
+                           _at(day, 10, 30), _at(day, 15), waste=("1433", "peaux_noyaux"))
+        dry = self._run("sechage", e["SEC-S1"], [(peeled, "955")], a["ananas_seche"], "143", _at(day, 16),
+                        _at(day + datetime.timedelta(days=1), 10))
+        # Cartons vides envoyes de l'usine Nord vers l'usine Sud : transfert d'une partie du lot.
+        boxes = self._boxes_for(nord, 30, _at(day, 6))
+        services.transfer_lot(tenant_id=self.t, user=self.prod, lot_id=boxes.id, to_site=sud,
+                              quantity=Decimal("30"), occurred_at=_at(day, 6), **self._when(_at(day, 6)))
+        self.clock.set(_at(day + datetime.timedelta(days=1), 10, 40))
+        services.block_lot(tenant_id=self.t, user=self.qa, lot_id=dry.id, reason_code="autre",
+                           comment="En attente du résultat d'analyse de résidus de pesticides")
+        # Echantillon de 1 kg envoye au laboratoire : rebut sous double validation.
+        req = services.request_approval(tenant_id=self.t, user=self.qa, lot_id=dry.id, action="scrap",
+                                        reason_code="echantillon", quantity=Decimal("1"))
+        self.clock.set(_at(day + datetime.timedelta(days=1), 11, 30))
+        services.approve_request(tenant_id=self.t, user=self.prod, request_id=req.id)
+        # Demande d'ajustement d'inventaire refusee : le recomptage n'est pas termine.
+        self.clock.set(_at(day + datetime.timedelta(days=1), 12))
+        req = services.request_approval(tenant_id=self.t, user=self.prod, lot_id=conv2.id, action="adjust",
+                                        reason_code="ecart_inventaire", quantity=Decimal("-15"))
+        self.clock.set(_at(day + datetime.timedelta(days=1), 14))
+        services.reject_request(tenant_id=self.t, user=self.qa, request_id=req.id, reason_code="verification_en_cours")
+        return {"r6": r6, "conv": conv2, "dry": dry, "unchecked": cartons[-1], "conv_carton": conv_carton}
+
+    # Coco -------------------------------------------------------------------------
+
+    def _coconut_chain(self, lot, kg, start, ratios, sud):
+        """Cassage, parage, rapage, pasteurisation, sechage, refroidissement. Renvoie (lot refroidi, kg, heure)."""
+        a, e = self.a, self.e
+        steps = [
+            ("cassage", "CAS-S1", "coco_amande", ratios[0], 3, ("autre", "Coques et eau de coco")),
+            ("parage", "CAS-S1", "coco_paree", ratios[1], 3, ("autre", "Pellicule brune retirée au parage")),
+            ("rapage", "RAP-S1", "coco_rapee", "0.995", 1, ("chutes",)),
+            ("pasteurisation", "PAS-S1", "coco_rapee", "0.995", 1, ("chutes",)),
+            ("sechage", "SEC-S2", "coco_sechee", ratios[2], 12, None),
+            ("refroidissement", "REF-S1", "coco_froide", "0.995", 2, ("chutes",)),
+        ]
+        current, qty, at = lot, Decimal(kg), start
+        for step, equipment, article, ratio, hours, waste in steps:
+            out = _kg(qty * Decimal(ratio))
+            w = (str(qty - out), *waste) if waste and qty > out else None
+            current = self._run(step, e[equipment], [(current, str(qty))], a[article], str(out), at, at + hours * H,
+                                waste=w)
+            at, qty = at + hours * H, out
+        return current, qty, at
+
+    def _coconut(self, sud, today):
+        a, p = self.a, self.p
+        cartons = []
+        for i, (ago, parcel, sacs, moisture) in enumerate(COCONUT_HISTORY):
             day = today - datetime.timedelta(days=ago)
-            lot = self._receive(a["ananas"], parcel, str(caisses), day, sud)
-            kg = caisses * 15
-            peeled_kg = kg * 55 // 100
-            peeled = self._run("epluchage_decoupe", e["PRE-S1"], [(lot, str(kg))], a["ananas_epluche"], str(peeled_kg),
-                               _at(day, 10), _at(day, 14), waste=(str(kg - peeled_kg), "peaux_noyaux"))
-            dry_start = _at(day, 14) + wait * H
-            dried_kg = peeled_kg * 15 // 100
-            dried = self._run("sechage", e["SEC-S1"], [(peeled, str(peeled_kg))], a["ananas_seche"], str(dried_kg),
-                              dry_start, dry_start + 16 * H)
-            carton = pack(dried, dried_kg, a["ananas_carton"], boxes_sud, dry_start + 30 * H, "CDT-S1")
-            # Le dernier lot n'est pas encore controle : « à contrôler avant expédition » pour la Qualité.
-            if moisture:
-                self._qc_at(carton, dry_start + 34 * H, moisture)
-            ship_lots[("ananas", i)] = carton
-        ship([("ananas", 0), ("ananas", 1)], today - datetime.timedelta(days=70), "lyon", "261001", sud)
-        ship([("ananas", 2), ("ananas", 3)], today - datetime.timedelta(days=40), "rotterdam", "261101", sud)
-        ship([("ananas", 4)], today - datetime.timedelta(days=25), "hambourg", "261102", sud)
+            late = ("ressaisie_papier", 26 * H) if i == COCONUT_LATE_RECEPTION else None
+            lot = self._receive(a["coco"], parcel, str(sacs), _at(day, 7, 30), sud, unit="sac", late=late)
+            cooled, qty, at = self._coconut_chain(lot, sacs * 50, _at(day, 8), ("0.50", "0.85", "0.53"), sud)
+            carton = self._pack(cooled, qty, a["coco_carton"], at + H, self.e["CDT-S1"], sud)
+            self._qc(carton, at + 5 * H, moisture)
+            cartons.append(carton)
 
-        # Coco rapee, usine Sud : memes etapes que l'exemple d'octobre.
-        for i, (ago, sacs, moisture) in enumerate(COCONUT_HISTORY):
-            day = today - datetime.timedelta(days=ago)
-            lot = self._receive(a["coco"], "GRB-06", str(sacs), day, sud, unit="sac")
-            kg = sacs * 50
-            steps = [("cassage", "CAS-S1", "coco_amande", 45), ("parage", "CAS-S1", "coco_paree", 85),
-                     ("rapage", "RAP-S1", "coco_rapee", 99), ("pasteurisation", "PAS-S1", "coco_rapee", 99),
-                     ("sechage", "SEC-S2", "coco_sechee", 51), ("refroidissement", "REF-S1", "coco_sechee", 99)]
-            at, current, qty = _at(day, 8), lot, kg
-            for step, equipment, article, pct in steps:
-                out = qty * pct // 100
-                hours = 12 if step == "sechage" else 2
-                current = self._run(step, e[equipment], [(current, str(qty))], a[article], str(out), at, at + hours * H,
-                                    waste=(str(qty - out), "chutes") if step not in ("sechage",) else None)
-                at, qty = at + (hours + 1) * H, out
-            carton = pack(current, qty, a["coco_carton"], boxes_sud, at, "CDT-S1")
-            self._qc_at(carton, at + 4 * H, moisture)
-            ship_lots[("coco", i)] = carton
-        ship([("coco", 0), ("coco", 1)], today - datetime.timedelta(days=15), "hambourg", "261103", sud)
+        def lines(indexes):
+            return [(cartons[i], Decimal(cartons[i].production_run.output_quantity), None) for i in indexes]
+
+        self._ship(lines([0, 1]), _at(today - datetime.timedelta(days=100), 7), p["hambourg"], "260801", sud)
+        self._ship(lines([2, 3]), _at(today - datetime.timedelta(days=65), 7), p["hambourg"], "260901", sud)
+        self._ship(lines([4, 5]), _at(today - datetime.timedelta(days=20), 7), p["hambourg"], "261102", sud)
+
+        # Lot d'octobre montre en direct : un carton conforme part a Hambourg, le second est trop humide (4,2 % pour
+        # 3 % au plus, norme APCC) : controle non conforme, lot bloque automatiquement.
+        day = D(2026, 10, 6)
+        coco = self._receive(a["coco"], "JAC-04", "60", _at(day, 7, 30), sud, unit="sac")
+        cooled, qty, at = self._coconut_chain(coco, 3000, _at(day, 8), ("0.50", "0.85", "0.53"), sud)
+        k1 = self._pack(cooled, 300, a["coco_carton"], at + H, self.e["CDT-S1"], sud)
+        k2 = self._pack(cooled, qty - 300, a["coco_carton"], at + 4 * H, self.e["CDT-S1"], sud)
+        self._qc(k1, at + 5 * H, "2.8")
+        self._qc(k2, at + 8 * H, "4.2", failed=("humidite",))
+        self._ship([(k1, Decimal("30"), "carton")], _at(D(2026, 10, 20), 7), p["hambourg"], "260900", sud)
+        return {"k2": k2}
+
+    # Tout ---------------------------------------------------------------------------
 
     def build(self):
-        self._accounts()
-        a, p = self._catalog()
-        self._steps_and_routes(a)
-        sites, e = self._sites()
-        self._history(a, p, e, sites["nord"], sites["sud"])
-        nord, sud = sites["nord"], sites["sud"]
-        q, prod = self.users[User.Role.QUALITE], self.users[User.Role.PRODUCTION]
-        d = datetime.date
+        with SimulatedClock() as clock:
+            self.clock = clock
+            today = timezone.localdate(clock.limit)
+            self._accounts(_at(D(2026, 1, 5), 8))
+            self.a, self.p = self._catalog()
+            self._steps_and_routes(self.a)
+            sites, self.e = self._sites()
+            nord, sud = sites["nord"], sites["sud"]
+            # Seuil propre a l'entreprise (ecran Seuils) : saisies tardives tolerees jusqu'a 3 %, rouge a 10 %.
+            dashboard.set_threshold(tenant_id=self.t, user=self.admin, code="late_entries_pct", green="3", red="10")
 
-        # Saison mangue 2026, usine Nord. Trois parcelles bio livrent le meme jour.
-        r1 = self._receive(a["mangue"], "NAP-07", "60", d(2026, 6, 9), nord)
-        r2 = self._receive(a["mangue"], "SIN-03", "80", d(2026, 6, 9), nord)
-        r3 = self._receive(a["mangue"], "KAR-12", "50", d(2026, 6, 9), nord)
-        # Livraison refusee (mouche des fruits), detruite apres double validation.
-        bad = self._receive(a["mangue"], "NIO-05", "40", d(2026, 6, 9), nord, visual_ok=False,
-                            reason_code="contamination")
-        req = services.request_approval(tenant_id=self.t, user=q, lot_id=bad.id, action="destroy",
-                                        reason_code="contamination")
-        services.approve_request(tenant_id=self.t, user=prod, request_id=req.id)
-        cartons_vides = services.receive_lot(
-            tenant_id=self.t, user=self.users[User.Role.OPERATEUR], article=a["carton_vide"],
-            supplier=p["emballages"], supplier_lot_code="EL-2606-114", quantity=Decimal("2"), unit="paquet",
-            occurred_at=_at(d(2026, 6, 9), 10), site=nord, **LATE,
-        )
+            mango = self._mango(nord, sud)
+            pineapple = self._pineapple(nord, sud, today)
+            coconut = self._coconut(sud, today)
 
-        # Murissement (rendement de reference fictif, a remplacer par celui du pilote), puis le lot mur est reparti
-        # sur deux sechoirs. Le sechoir 2 sort sous la fourchette : ecart signale au bilan.
-        mure = self._run("murissement", e["MUR-N1"], [(r1, "1200"), (r2, "1600"), (r3, "1000")], a["mure"],
-                         "3724", _at(d(2026, 6, 9), 14), _at(d(2026, 6, 12), 7))
-        sec1 = self._run("sechage", e["SEC-N1"], [(mure, "1900")], a["sechee"], "146",
-                         _at(d(2026, 6, 12), 8), _at(d(2026, 6, 13), 6), waste=("570", "peaux_noyaux"))
-        sec2 = self._run("sechage", e["SEC-N2"], [(mure, "1824")], a["sechee"], "99",
-                         _at(d(2026, 6, 12), 9), _at(d(2026, 6, 13), 7), waste=("547", "peaux_noyaux"))
-        c1 = self._run("conditionnement", e["CDT-N1"], [(sec1, "146"), (cartons_vides, "14")], a["carton"], "14",
-                       _at(d(2026, 6, 15), 8), _at(d(2026, 6, 15), 11), unit="carton", waste=("6", "chutes"))
-        c2 = self._run("conditionnement", e["CDT-N1"], [(sec2, "99"), (cartons_vides, "9")], a["carton"], "9",
-                       _at(d(2026, 6, 15), 13), _at(d(2026, 6, 15), 15), unit="carton", waste=("9", "chutes"))
-        self._qc(c1, d(2026, 6, 15), 12, "16.5")
-        self._qc(c2, d(2026, 6, 15), 16, "17.0")
-        pal = self._run("palettisation", e["CDT-N1"], [(c1, "140"), (c2, "90")], a["palette"], "230",
-                        _at(d(2026, 6, 16), 9), _at(d(2026, 6, 16), 10))
-        shipping.create_shipment(
-            tenant_id=self.t, user=prod, customer=p["rotterdam"], lines=[(pal, Decimal("230"), None)],
-            shipped_at=_at(d(2026, 7, 6), 7), container_number="TRCU2606003", seal_number="SCELLE-DEMO-0001",
-            export_document_ref="COI.CI.2026.DEMO-0001", bill_of_lading="BL-DEMO-0001", site=nord, **LATE,
-        )
-
-        # Deuxieme lot de la saison : autres livraisons, autre sechoir, en partie expedie a Lyon.
-        r4 = self._receive(a["mangue"], "KAR-12", "45", d(2026, 6, 16), nord)
-        r5 = self._receive(a["mangue"], "SIN-03", "55", d(2026, 6, 16), nord)
-        # Erreur de saisie corrigee : une premiere declaration avec une mauvaise quantite, annulee avec motif.
-        # Les mangues reviennent en stock, le lot produit par erreur est bloque, puis la bonne declaration suit.
-        erreur = self._run("murissement", e["MUR-N1"], [(r4, "900"), (r5, "1100")], a["mure"], "1690",
-                           _at(d(2026, 6, 16), 14), _at(d(2026, 6, 19), 7))
-        production.cancel_run(tenant_id=self.t, user=prod, run_id=erreur.production_run.id,
-                              reason_code="mauvaise_quantite")
-        mure2 = self._run("murissement", e["MUR-N1"], [(r4, "900"), (r5, "1100")], a["mure"], "1960",
-                          _at(d(2026, 6, 16), 14), _at(d(2026, 6, 19), 7))
-        sec3 = self._run("sechage", e["SEC-N3"], [(mure2, "1960")], a["sechee"], "150",
-                         _at(d(2026, 6, 19), 8), _at(d(2026, 6, 20), 6), waste=("590", "peaux_noyaux"))
-        c3 = self._run("conditionnement", e["CDT-N1"], [(sec3, "150"), (cartons_vides, "15")], a["carton"], "15",
-                       _at(d(2026, 6, 22), 8), _at(d(2026, 6, 22), 11), unit="carton")
-        self._qc(c3, d(2026, 6, 22), 12, "16.8")
-        shipping.create_shipment(
-            tenant_id=self.t, user=prod, customer=p["lyon"], lines=[(c3, Decimal("8"), "carton")],
-            shipped_at=_at(d(2026, 7, 9), 7), container_number="TRCU2607000", seal_number="SCELLE-DEMO-0002",
-            export_document_ref="COI.CI.2026.DEMO-0002", site=nord, **LATE,
-        )
-
-        # Saison ananas (en cours), usine Sud. Lot bio epluche puis seche, le reste attend en stock. Le lot seche
-        # attend l'analyse de residus : debloque en direct. Un lot « en conversion » sert a montrer le refus
-        # de melange.
-        today = timezone.localdate()
-        day_in = today - datetime.timedelta(days=3)
-        r6 = self._receive(a["ananas"], "BON-21", "200", day_in, sud)
-        conv = self._receive(a["ananas"], "ADI-02", "40", day_in, sud)
-        peeled = self._run("epluchage_decoupe", e["PRE-S1"], [(r6, "2400")], a["ananas_epluche"], "1320",
-                           _at(day_in, 10), _at(day_in, 13), waste=("1080", "peaux_noyaux"))
-        dry = self._run("sechage", e["SEC-S1"], [(peeled, "1320")], a["ananas_seche"], "200",
-                        _at(day_in, 14), _at(day_in + datetime.timedelta(days=1), 6))
-        # Cartons vides envoyes de l'usine Nord vers l'usine Sud pour l'ananas : transfert d'une partie du lot.
-        services.transfer_lot(tenant_id=self.t, user=prod, lot_id=cartons_vides.id, to_site=sud,
-                              quantity=Decimal("30"), occurred_at=_at(day_in, 9), **LATE)
-        services.block_lot(tenant_id=self.t, user=q, lot_id=dry.id, reason_code="autre",
-                           comment="En attente du résultat d'analyse de résidus de pesticides")
-
-        # Coco rapee sechee, octobre 2026, usine Sud : toutes les etapes propres a la coco. Quantites fictives.
-        oct_ = d(2026, 10, 6)
-        coco = self._receive(a["coco"], "JAC-04", "60", oct_, sud, unit="sac")
-        cartons_sud = services.receive_lot(
-            tenant_id=self.t, user=self.users[User.Role.OPERATEUR], article=a["carton_vide"],
-            supplier=p["emballages"], supplier_lot_code="EL-2610-031", quantity=Decimal("2"), unit="paquet",
-            occurred_at=_at(oct_, 10), site=sud, **LATE,
-        )
-        amande = self._run("cassage", e["CAS-S1"], [(coco, "3000")], a["coco_amande"], "1350",
-                           _at(oct_, 9), _at(oct_, 12), waste=("1650", "autre", "Coques et eau de coco"))
-        paree = self._run("parage", e["CAS-S1"], [(amande, "1350")], a["coco_paree"], "1150",
-                          _at(oct_, 12), _at(oct_, 15), waste=("200", "autre", "Pellicule brune retirée au parage"))
-        rapee = self._run("rapage", e["RAP-S1"], [(paree, "1150")], a["coco_rapee"], "1140",
-                          _at(oct_, 15), _at(oct_, 16), waste=("10", "chutes"))
-        pasteur = self._run("pasteurisation", e["PAS-S1"], [(rapee, "1140")], a["coco_rapee"], "1135",
-                            _at(oct_, 16), _at(oct_, 17), waste=("5", "chutes"))
-        seche = self._run("sechage", e["SEC-S2"], [(pasteur, "1135")], a["coco_sechee"], "585",
-                          _at(oct_, 17), _at(d(2026, 10, 7), 5))
-        froid = self._run("refroidissement", e["REF-S1"], [(seche, "585")], a["coco_sechee"], "582",
-                          _at(d(2026, 10, 7), 6), _at(d(2026, 10, 7), 8), waste=("3", "chutes"))
-        k1 = self._run("conditionnement", e["CDT-S1"], [(froid, "300"), (cartons_sud, "30")], a["coco_carton"],
-                       "30", _at(d(2026, 10, 7), 9), _at(d(2026, 10, 7), 11), unit="carton")
-        k2 = self._run("conditionnement", e["CDT-S1"], [(froid, "282"), (cartons_sud, "28")], a["coco_carton"],
-                       "28", _at(d(2026, 10, 7), 13), _at(d(2026, 10, 7), 15), unit="carton", waste=("2", "chutes"))
-        self._qc(k1, d(2026, 10, 7), 12, "3.0")
-        # Second lot trop humide : controle non conforme, le lot est bloque automatiquement.
-        self._qc(k2, d(2026, 10, 7), 16, "6.5", failed=("humidite",))
-        shipping.create_shipment(
-            tenant_id=self.t, user=prod, customer=p["hambourg"], lines=[(k1, Decimal("30"), "carton")],
-            shipped_at=_at(d(2026, 10, 20), 7), container_number="TRCU2609002", seal_number="SCELLE-DEMO-0003",
-            export_document_ref="COI.CI.2026.DEMO-0003", bill_of_lading="BL-DEMO-0003", site=sud, **LATE,
-        )
-
-        assert ApprovalRequest.objects.filter(status=ApprovalRequest.Status.APPROVED).count() == 1
+            # Demande en attente depuis avant-hier apres-midi : 2 cartons ecrases au chariot, rebut demande par le
+            # receptionnaire. Elle attend plus de 24 h : jaune au tableau de bord le jour de la demo.
+            clock.set(_at(today - datetime.timedelta(days=2), 16))
+            services.request_approval(tenant_id=self.t, user=self.op, lot_id=mango["last"].id, action="scrap",
+                                      reason_code="emballage_abime", quantity=Decimal("20"))
+            clock.set(clock.limit)
+        assert timezone.now is clock._real
         return [
-            f"Rappel depuis un carton (séchoir 2, écart de rendement) : cherche {c2.code}",
-            "Rappel depuis un conteneur : cherche TRCU2606003",
-            f"Mélange refusé en direct : épluche ensemble {r6.code} (bio) et {conv.code} (en conversion)",
-            f"Lot bloqué à débloquer en direct : {dry.code}",
+            f"Rappel depuis un carton (séchoir 2, écart de rendement) : cherche {mango['c2'].code}",
+            f"Rappel depuis un conteneur : cherche {_container('260600')}",
+            f"Mélange refusé en direct : épluche ensemble {pineapple['r6'].code} (bio) et "
+            f"{pineapple['conv'].code} (en conversion)",
+            f"Lot bloqué à débloquer en direct (analyse de résidus) : {pineapple['dry'].code}",
             "Coco râpée, rappel depuis un conteneur : cherche TRCU2609002",
-            f"Contrôle qualité non conforme (humidité), lot bloqué : {k2.code}",
-            f"Lot détruit après double validation : {bad.code}",
+            f"Contrôle qualité non conforme (humidité), lot bloqué : {coconut['k2'].code}",
+            f"Lot détruit après double validation : {mango['bad'].code}",
+            f"Rebut en attente de validation : {mango['last'].code} (2 cartons écrasés)",
         ]
