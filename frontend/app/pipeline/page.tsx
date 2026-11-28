@@ -70,9 +70,6 @@ export default function PipelinePage() {
 
   return (
     <main>
-      <p>
-        <a href="/">Accueil</a>
-      </p>
       <h1>Pipeline : du producteur au conteneur</h1>
       <p style={{ maxWidth: 760, color: "#555" }}>
         Les 8 blocs du pipeline des fruits séchés export. Cochez ce que votre entreprise utilise. Une étape de production

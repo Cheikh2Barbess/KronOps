@@ -202,9 +202,6 @@ export default function Users() {
   if (error) {
     return (
       <main>
-        <p>
-          <a href="/">Accueil</a>
-        </p>
         <p role="alert">{error}</p>
       </main>
     );
@@ -214,9 +211,6 @@ export default function Users() {
 
   return (
     <main>
-      <p>
-        <a href="/">Accueil</a>
-      </p>
       <h1>Utilisateurs</h1>
       <p>
         Fiches visibles par l&apos;Admin, la Qualité et la Production. Les opérateurs et le rôle Lecture ne voient que

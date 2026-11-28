@@ -126,11 +126,3 @@ export function LateFlag({ late }: { late: boolean }) {
     </span>
   ) : null;
 }
-
-export function Menu() {
-  return (
-    <p>
-      <a href="/">Accueil</a>
-    </p>
-  );
-}

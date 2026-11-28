@@ -108,9 +108,6 @@ export default function Tracabilite() {
 
   return (
     <main>
-      <p>
-        <a href="/">Accueil</a>
-      </p>
       <h1>Traçabilité</h1>
       <p>
         Pour un rappel complet et imprimable (parcelles, étapes, stock à bloquer, conteneurs), utilisez le{" "}

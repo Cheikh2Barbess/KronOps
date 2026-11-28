@@ -3,7 +3,7 @@
 // Bilan matiere : chaque etape declaree avec sa matiere consommee, son produit, ses dechets et son rendement.
 // Un rendement hors de la fourchette attendue de l'article est signale. Les saisies tardives aussi.
 import { FormEvent, useCallback, useEffect, useState } from "react";
-import { LateFlag, Menu, Option, OrganicBadge, errorText, fmt, when, withUnit } from "@/components/Codes";
+import { LateFlag, Option, OrganicBadge, errorText, fmt, when, withUnit } from "@/components/Codes";
 import { Run, YieldCell } from "@/components/Runs";
 import { api } from "@/lib/api";
 
@@ -46,9 +46,6 @@ export default function Bilan() {
   const runs = (data?.runs || []).filter((r) => !onlyIssues || r.late || r.yield_status === "bas" || r.yield_status === "haut");
   return (
     <main>
-      <div className="no-print">
-        <Menu />
-      </div>
       <h1>Bilan matière</h1>
       <p>
         Pour chaque étape : matière consommée, produit obtenu, déchets déclarés et rendement. Le reste (eau évaporée au séchage,

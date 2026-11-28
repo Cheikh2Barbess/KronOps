@@ -701,9 +701,6 @@ export default function Referentiels() {
 
   return (
     <main>
-      <p>
-        <a href="/">Accueil</a>
-      </p>
       <h1>Référentiels</h1>
       <ArticleSection allergens={allergens} />
       <PartnerSection />

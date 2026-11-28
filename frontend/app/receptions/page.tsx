@@ -461,9 +461,6 @@ export default function Receptions() {
 
   return (
     <main>
-      <p>
-        <a href="/">Accueil</a>
-      </p>
       <h1>Réceptions</h1>
       <p>
         Enregistrez chaque livraison à son arrivée. Tracalys crée le lot, calcule la quantité dans l&apos;unité de l&apos;article et
