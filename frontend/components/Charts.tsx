@@ -13,12 +13,15 @@ import { Status, StatusBadge, StatusIcon, STATUS_META } from "@/components/Statu
 
 export type Cell = string | number | { text: string | number; status: Status };
 export type Point = { x: string; y: number | null };
-export type Series = { name: string; points: Point[]; band?: { min: number; max: number } };
+// `target` : serie de cible (Sollwert), dessinee en pointilles gris, jamais mise en avant.
+export type Series = { name: string; points: Point[]; band?: { min: number; max: number }; target?: boolean };
 export type Bar = { label: string; value: number | null; status?: Status };
+// aggregate : "sum" (kilos par periode), "mean" (pourcentages, heures), "cumul" (total qui s'accumule).
 export type Detail =
-  | { kind: "line"; title: string; unit: string; series: Series[]; aggregate?: "sum" | "mean" }
+  | { kind: "line"; title: string; unit: string; series: Series[]; aggregate?: "sum" | "mean" | "cumul" }
   | { kind: "bars"; title: string; unit: string; bars: Bar[] }
-  | { kind: "table"; title: string; columns: string[]; rows: Cell[][] };
+  | { kind: "table"; title: string; columns: string[]; rows: Cell[][] }
+  | { kind: "tabs"; title: string; tabs: { label: string; details: Detail[] }[] };
 
 const HIGHLIGHT = "#2e6be6";
 const OTHERS = ["#98a2b3", "#b4bcc8", "#7d8899", "#c7cdd6"];
@@ -48,8 +51,10 @@ const defined = (s: Series) => s.points.filter((p): p is { x: string; y: number 
 
 // Serie mise en avant : la plus lourde pour une somme, la derniere valeur la plus haute pour une moyenne.
 function highlightIndex(series: Series[], aggregate: string) {
-  let best = 0;
+  let best = series.findIndex((s) => !s.target);
+  if (best < 0) return 0;
   series.forEach((s, i) => {
+    if (s.target) return;
     const score = aggregate === "sum" ? total(s) : defined(s).at(-1)?.y ?? -Infinity;
     const bestScore = aggregate === "sum" ? total(series[best]) : defined(series[best]).at(-1)?.y ?? -Infinity;
     if (score > bestScore) best = i;
@@ -59,10 +64,27 @@ function highlightIndex(series: Series[], aggregate: string) {
 
 // Reponse a la question du graphique, tiree des valeurs affichees (rien d'invente).
 export function answer(detail: Detail): string | null {
+  if (detail.kind === "tabs") return null;
   if (detail.kind === "line") {
     const series = detail.series.filter((s) => defined(s).length);
     if (!series.length) return null;
     const unit = detail.unit;
+    const real = series.filter((s) => !s.target);
+    const target = series.find((s) => s.target);
+    if (target && real.length === 1) {
+      // Reel contre cible : total des periodes qui ont une cible, et l'ecart.
+      const withTarget = target.points.map((p, i) => (p.y === null ? null : i)).filter((i): i is number => i !== null);
+      if (!withTarget.length) return `Pas de cible sur ces périodes, réel ${nf(total(real[0]), unit)}`;
+      const r = withTarget.reduce((a, i) => a + (real[0].points[i]?.y || 0), 0);
+      const t = withTarget.reduce((a, i) => a + (target.points[i].y || 0), 0);
+      const pct = t ? Math.round((r * 100) / t) : null;
+      return `Réel ${nf(r, unit)} pour une cible de ${nf(t, unit)}${pct !== null ? `, soit ${pct} % de la cible` : ""}`;
+    }
+    if (detail.aggregate === "cumul") {
+      const ends = series.map((s) => ({ s, last: defined(s).at(-1)! })).sort((a, b) => b.last.y - a.last.y);
+      const top = ends[0];
+      return `Campagne ${top.s.name} : ${nf(top.last.y, unit)} cumulés en ${top.last.x}`;
+    }
     const agg = detail.aggregate || (unit === "kg" ? "sum" : "mean");
     if (agg === "sum") {
       const sum = series.reduce((a, s) => a + total(s), 0);
@@ -184,7 +206,7 @@ export function LineChart({ series, unit, aggregate = "sum" }: { series: Series[
   const y = (v: number) => T + (H - T - B) * (1 - (v - min) / (max - min || 1));
   const every = Math.ceil(labels.length / 8);
   const hi = highlightIndex(series, aggregate);
-  const color = (i: number) => (i === hi ? HIGHLIGHT : OTHERS[(i < hi ? i : i - 1) % OTHERS.length]);
+  const color = (i: number) => (series[i].target ? "#667085" : i === hi ? HIGHLIGHT : OTHERS[(i < hi ? i : i - 1) % OTHERS.length]);
   // Etiquettes au bout des lignes, ecartees si elles se chevauchent.
   const ends = series
     .map((s, i) => {
@@ -196,6 +218,7 @@ export function LineChart({ series, unit, aggregate = "sum" }: { series: Series[
     .sort((a, b) => a.cy - b.cy);
   for (let k = 1; k < ends.length; k++) if (ends[k].ly - ends[k - 1].ly < 16) ends[k].ly = ends[k - 1].ly + 16;
   const single = series.length === 1;
+  const plain = (si: number) => single && aggregate === "sum" && !series[si].target;
   return (
     <figure style={{ margin: 0 }}>
       <svg className="chart-svg" viewBox={`0 0 ${W} ${H}`} width="100%" role="img" aria-label={`Courbe en ${unit}`} style={{ maxHeight: 340 }}>
@@ -239,14 +262,14 @@ export function LineChart({ series, unit, aggregate = "sum" }: { series: Series[
             const c = color(si);
             return (
               <g key={s.name}>
-                {single && aggregate === "sum" &&
+                {plain(si) &&
                   segments.map((seg, k) =>
                     seg.length > 1 ? (
                       <path key={`a${k}`} d={`M${x(seg[0].k)},${y(min)}${seg.map((p) => `L${x(p.k)},${y(p.y)}`).join("")}L${x(seg[seg.length - 1].k)},${y(min)}Z`} fill={c} opacity={0.08} />
                     ) : null,
                   )}
                 {segments.map((seg, k) => (
-                  <path key={k} d={seg.map((p, n) => `${n ? "L" : "M"}${x(p.k)},${y(p.y)}`).join("")} fill="none" stroke={c} strokeWidth={si === hi ? 2.5 : 1.75} strokeLinejoin="round" strokeLinecap="round" />
+                  <path key={k} d={seg.map((p, n) => `${n ? "L" : "M"}${x(p.k)},${y(p.y)}`).join("")} fill="none" stroke={c} strokeWidth={si === hi ? 2.5 : 1.75} strokeDasharray={s.target ? "6 5" : undefined} strokeLinejoin="round" strokeLinecap="round" />
                 ))}
                 {s.points.map((p, k) =>
                   p.y === null ? null : (
@@ -308,7 +331,29 @@ export function Bars({ bars, unit }: { bars: Bar[]; unit: string }) {
   );
 }
 
+// Onglets (jour, semaine, mois, saison) : un bouton par vue, le contenu de la vue choisie dessous.
+function Tabs({ detail }: { detail: Extract<Detail, { kind: "tabs" }> }) {
+  const [active, setActive] = useState(detail.tabs.length > 2 ? 2 : 0);
+  const current = detail.tabs[active];
+  return (
+    <section className="detail-tabs">
+      <h3 className="detail-answer">{detail.title}</h3>
+      <div className="tab-row" role="tablist" aria-label={detail.title}>
+        {detail.tabs.map((t, i) => (
+          <button key={t.label} type="button" role="tab" aria-selected={i === active} className={i === active ? "tab active" : "tab"} onClick={() => setActive(i)}>
+            {t.label}
+          </button>
+        ))}
+      </div>
+      <div role="tabpanel" aria-label={current.label}>
+        {current.details.length ? current.details.map((d, i) => <DetailView key={`${current.label}-${i}`} detail={d} />) : <p className="muted">Rien à afficher pour cette vue.</p>}
+      </div>
+    </section>
+  );
+}
+
 export function DetailView({ detail }: { detail: Detail }) {
+  if (detail.kind === "tabs") return <Tabs detail={detail} />;
   const text = detail.kind === "table" ? null : answer(detail);
   return (
     <section className="detail-block">

@@ -1,13 +1,14 @@
-"""Reglage des seuils du tableau de bord (Admin de l'entreprise)."""
+"""Reglages du tableau de bord par l'Admin de l'entreprise : seuils des couleurs et cibles de production."""
 
-from decimal import Decimal
+import datetime
+from decimal import Decimal, InvalidOperation
 
 from django.db import transaction
 from rest_framework.exceptions import ValidationError
 
 from audit.services import record_audit
 from dashboard.indicators import HIGHER, THRESHOLDS
-from dashboard.models import DashboardThreshold
+from dashboard.models import DashboardThreshold, ProductionTarget
 from events.services import publish_event
 
 
@@ -57,3 +58,60 @@ def reset_threshold(*, tenant_id, user, code):
     record_audit(tenant_id=tenant_id, user=user, action="delete", entity=row, old_values=_values(row))
     row.delete()
     publish_event(tenant_id=tenant_id, event_type="dashboard.threshold_reset", payload={"code": code})
+
+
+# Cibles de production ---------------------------------------------------------------------
+
+
+@transaction.atomic
+def set_targets(*, tenant_id, user, article, year, months):
+    """Cibles d'un article pour les 12 mois d'une annee. `months` = 12 valeurs (unite de base) ou None (pas de cible).
+
+    Une cible changee ou retiree passe au journal d'audit (ancienne et nouvelle valeur), avec un evenement.
+    """
+    from dashboard.product_selectors import target_articles
+
+    if not target_articles().filter(pk=article.pk).exists():
+        raise ValidationError({"article": ["Seuls les produits (semi-finis et finis actifs) reçoivent une cible."]})
+    if not 2000 <= int(year) <= 2100:
+        raise ValidationError({"year": ["Année invalide."]})
+    if len(months) != 12:
+        raise ValidationError({"months": ["Il faut 12 valeurs, une par mois (vide si pas de cible)."]})
+    wanted = {}
+    for index, value in enumerate(months):
+        if value in (None, ""):
+            continue
+        try:
+            value = Decimal(str(value))
+        except InvalidOperation:
+            raise ValidationError({"months": [f"Mois {index + 1} : nombre attendu."]})
+        if value <= 0:
+            raise ValidationError({"months": [f"Mois {index + 1} : la cible doit être positive (vide pour aucune)."]})
+        wanted[datetime.date(int(year), index + 1, 1)] = value.quantize(Decimal("0.001"))
+    existing = {t.month: t for t in ProductionTarget.objects.select_for_update().filter(article=article,
+                                                                                         month__year=year)}
+    changed = []
+    for month in sorted(set(existing) | set(wanted)):
+        row, value = existing.get(month), wanted.get(month)
+        if row is None:
+            row = ProductionTarget.objects.create(tenant_id=tenant_id, article=article, month=month, quantity=value)
+            record_audit(tenant_id=tenant_id, user=user, action="create", entity=row, new_values=_target_values(row))
+        elif value is None:
+            record_audit(tenant_id=tenant_id, user=user, action="delete", entity=row, old_values=_target_values(row))
+            row.delete()
+        elif row.quantity != value:
+            old = _target_values(row)
+            row.quantity = value
+            row.save(update_fields=["quantity", "updated_at"])
+            record_audit(tenant_id=tenant_id, user=user, action="update", entity=row, old_values=old,
+                         new_values=_target_values(row))
+        else:
+            continue
+        changed.append(month.isoformat())
+    if changed:
+        publish_event(tenant_id=tenant_id, event_type="dashboard.targets_changed",
+                      payload={"article_id": str(article.id), "months": changed})
+
+
+def _target_values(row):
+    return {"article_id": str(row.article_id), "month": row.month.isoformat(), "quantity": str(row.quantity)}

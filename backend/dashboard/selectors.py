@@ -17,6 +17,7 @@ from django.db.models import Min
 from django.utils import timezone
 
 from catalog.models import Article, OrganicStatus, Parcel
+from dashboard import product_selectors
 from dashboard.indicators import BAD, INFO, OK, STATUS_LABELS, THRESHOLDS, WARN, defaults, status_for, worst
 from dashboard.models import DashboardThreshold
 from lots import selectors as lot_selectors
@@ -37,15 +38,15 @@ RECEPTION = "reception"  # libelle de « l'etape » d'origine d'un lot recu
 # Tuiles par role, dans l'ordre d'affichage. Le patron voit le global, la production le flux, la qualite les
 # controles, l'operateur ce qu'il a a faire. Chaque tuile ne lit que des donnees ouvertes a ce role.
 ROLE_TILES = {
-    User.Role.ADMIN: ["received", "produced", "shipped", "yields", "qc", "bottleneck", "stock", "blocked",
-                      "approvals", "expiry", "organic", "reception_conformity"],
-    User.Role.LECTURE: ["received", "produced", "shipped", "yields", "qc", "bottleneck", "stock", "blocked",
-                        "expiry", "organic", "reception_conformity"],
-    User.Role.PRODUCTION: ["runs", "bottleneck", "wip", "yields", "produced", "received", "shipped", "blocked",
-                           "approvals", "expiry", "late_entries"],
-    User.Role.QUALITE: ["qc", "moisture", "ready_without_qc", "blocked", "approvals", "reception_conformity",
-                        "organic", "expiry", "yields", "late_entries"],
-    User.Role.OPERATEUR: ["wip", "my_entries", "received", "approvals", "blocked"],
+    User.Role.ADMIN: ["targets", "products", "produced", "received", "shipped", "yields", "qc", "line_stops",
+                      "bottleneck", "stock", "blocked", "approvals", "expiry", "organic", "reception_conformity"],
+    User.Role.LECTURE: ["targets", "products", "produced", "received", "shipped", "yields", "qc", "line_stops",
+                        "bottleneck", "stock", "blocked", "expiry", "organic", "reception_conformity"],
+    User.Role.PRODUCTION: ["targets", "products", "line_stops", "runs", "bottleneck", "wip", "yields", "produced",
+                           "received", "shipped", "blocked", "approvals", "expiry", "late_entries"],
+    User.Role.QUALITE: ["products", "qc", "moisture", "ready_without_qc", "blocked", "approvals",
+                        "reception_conformity", "organic", "expiry", "yields", "late_entries", "line_stops"],
+    User.Role.OPERATEUR: ["wip", "my_entries", "line_stops", "received", "approvals", "blocked"],
 }
 
 
@@ -93,6 +94,10 @@ class Context:
         self.thresholds = thresholds()
         self.granularity = "day" if days <= 31 else "week" if days <= 120 else "month"
         self.buckets = self._buckets()
+
+    @staticmethod
+    def tile(*args, **kwargs):
+        return _tile(*args, **kwargs)
 
     # Seuils et couleurs -------------------------------------------------------
 
@@ -793,7 +798,8 @@ def tile_my_entries(ctx):
     return _tile(
         "my_entries", "Mes saisies", value=len(mine), unit="saisies", source=source,
         subtitle=f"Dernière : {mine[0][0].lower()} le {_when(mine[0][1])}",
-        detail=[_table("Mes saisies", ["Type", "Date", "Lot", "Article", "Quantité"],
+        detail=[product_selectors.my_entries_compare(ctx.user, ctx.today),
+                _table("Mes saisies", ["Type", "Date", "Lot", "Article", "Quantité"],
                        [[k, _when(at), code, name, qty] for k, at, code, name, qty in mine])],
     )
 
@@ -832,6 +838,8 @@ def tile_ready_without_qc(ctx):
 
 
 TILES = {
+    "targets": product_selectors.tile_targets, "products": product_selectors.tile_products,
+    "line_stops": product_selectors.tile_line_stops,
     "received": tile_received, "produced": tile_produced, "shipped": tile_shipped, "yields": tile_yields,
     "qc": tile_qc, "moisture": tile_moisture, "blocked": tile_blocked, "approvals": tile_approvals,
     "bottleneck": tile_bottleneck, "wip": tile_wip, "stock": tile_stock, "expiry": tile_expiry,

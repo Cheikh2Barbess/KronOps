@@ -5,13 +5,16 @@ from decimal import Decimal
 
 from django.db.models import Prefetch, Q
 from django.http import Http404
+from django.utils import timezone
 
+from lots import reasons as lot_reasons
 from lots import selectors as lot_selectors
 from lots import services as lot_services
 from lots.models import Lot, LotLink, Movement
 from production.models import (
     DEFAULT_ACTIVE_STEPS,
     Equipment,
+    LineStop,
     PipelineSetting,
     ProductionInput,
     ProductionRun,
@@ -20,6 +23,7 @@ from production.models import (
     RouteStep,
     StepSetting,
 )
+from production import reasons
 from production.services import yield_status
 
 PCT = Decimal("0.01")
@@ -238,3 +242,53 @@ def mark_cancellable(found):
     for r in found:
         r.cancellable = r.cancelled is None and r.output_lot_id not in used
     return found
+
+
+# Arrets de ligne ------------------------------------------------------------------
+
+
+def line_stops(*, start=None, end=None, include_cancelled=True, equipment_id=None, site_id=None):
+    """Arrets qui touchent la periode [start, end] (un arret en cours touche toujours le present)."""
+    qs = LineStop.objects.select_related("equipment", "site", "user", "ended_by", "cancelled_by").order_by(
+        "-started_at")
+    if start is not None:
+        qs = qs.filter(Q(ended_at__isnull=True) | Q(ended_at__gte=start))
+    if end is not None:
+        qs = qs.filter(started_at__lte=end)
+    if not include_cancelled:
+        qs = qs.filter(cancelled_at__isnull=True)
+    if equipment_id:
+        qs = qs.filter(equipment_id=equipment_id)
+    if site_id:
+        qs = qs.filter(site_id=site_id)
+    return qs
+
+
+def decorate_stop(stop, *, now=None, start=None, end=None):
+    """Duree (en heures, bornee a la periode si elle est donnee), cause lisible, planifie ou non, en cours ou non."""
+    now = now or timezone.now()
+    stop.ongoing = stop.ended_at is None and stop.cancelled_at is None
+    stop.planned = stop.cause_code in reasons.PLANNED_STOPS
+    stop.cause_label = lot_reasons.text(reasons.STOP_CAUSES, stop.cause_code, stop.comment)
+    finish = stop.ended_at or now
+    begin = max(stop.started_at, start) if start else stop.started_at
+    finish = min(finish, end) if end else finish
+    stop.duration_hours = max(Decimal((finish - begin).total_seconds()) / Decimal(3600), Decimal("0"))
+    stop.cancel_reason = (lot_reasons.text(reasons.STOP_CANCEL, stop.cancel_reason_code, stop.cancel_comment)
+                          if stop.cancelled_at else "")
+    return stop
+
+
+def stop_or_404(*, stop_id):
+    stop = line_stops().filter(pk=stop_id).first()
+    if stop is None:
+        raise Http404
+    return decorate_stop(stop)
+
+
+def product_names():
+    """Article (id) vers le nom de son produit : le parcours ou il est rattache (« Mangue séchée »).
+
+    Un article hors parcours est son propre produit (son nom).
+    """
+    return {a: name for a, name in RouteArticle.objects.values_list("article_id", "route__name")}

@@ -185,3 +185,48 @@ class RouteWriteSerializer(serializers.Serializer):
     is_active = serializers.BooleanField(default=True)
     steps = serializers.ListField(child=serializers.CharField(max_length=20), allow_empty=True)
     articles = serializers.ListField(child=serializers.UUIDField(), allow_empty=True)
+
+
+# Arrets de ligne -------------------------------------------------------------------
+
+
+class StopCreateSerializer(serializers.Serializer):
+    equipment = serializers.UUIDField()
+    cause_code = serializers.CharField(max_length=40)
+    comment = serializers.CharField(required=False, allow_blank=True, default="")
+    started_at = serializers.DateTimeField(required=False, allow_null=True,
+                                           help_text="Vide : maintenant (l'arret commence au moment de la saisie).")
+    ended_at = serializers.DateTimeField(required=False, allow_null=True, help_text="Vide : arret en cours.")
+
+
+class StopEndSerializer(serializers.Serializer):
+    ended_at = serializers.DateTimeField(required=False, allow_null=True, help_text="Vide : maintenant.")
+
+
+class StopCancelSerializer(serializers.Serializer):
+    reason_code = serializers.CharField(max_length=40)
+    comment = serializers.CharField(required=False, allow_blank=True, default="")
+
+
+class StopSerializer(serializers.Serializer):
+    id = serializers.UUIDField()
+    equipment_id = serializers.UUIDField()
+    equipment_code = serializers.CharField(source="equipment.code")
+    equipment_name = serializers.CharField(source="equipment.name")
+    site_name = serializers.CharField(source="site.name", default=None)
+    started_at = serializers.DateTimeField()
+    ended_at = serializers.DateTimeField(allow_null=True)
+    ongoing = serializers.BooleanField()
+    duration_hours = serializers.FloatField()
+    cause_code = serializers.CharField()
+    cause_label = serializers.CharField()
+    planned = serializers.BooleanField()
+    username = serializers.CharField(source="user.username", default=None)
+    ended_by = serializers.CharField(source="ended_by.username", default=None)
+    cancelled = serializers.SerializerMethodField()
+
+    def get_cancelled(self, stop):
+        if not stop.cancelled_at:
+            return None
+        return {"at": stop.cancelled_at, "by": stop.cancelled_by.username if stop.cancelled_by else None,
+                "reason_code": stop.cancel_reason_code, "reason": stop.cancel_reason}

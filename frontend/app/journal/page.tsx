@@ -55,6 +55,8 @@ const ENTITY_TYPES: Record<string, string> = {
   "shipping.shipment": "Expéditions",
   "tenants.user": "Utilisateurs",
   "dashboard.dashboardthreshold": "Seuils du tableau de bord",
+  "dashboard.productiontarget": "Cibles de production",
+  "production.linestop": "Arrêts de ligne",
 };
 // Nom de l'objet au singulier, en tete de la colonne « Objet ».
 const ENTITY_ONE: Record<string, string> = {
@@ -74,6 +76,8 @@ const ENTITY_ONE: Record<string, string> = {
   "shipping.shipment": "Expédition",
   "tenants.user": "Utilisateur",
   "dashboard.dashboardthreshold": "Seuil du tableau de bord",
+  "dashboard.productiontarget": "Cible de production",
+  "production.linestop": "Arrêt de ligne",
 };
 
 // Libelles francais des champs enregistres dans le journal.
@@ -161,6 +165,9 @@ const FIELDS: Record<string, string> = {
   seal_number: "plomb",
   export_document_ref: "certificat d'inspection",
   bill_of_lading: "connaissement",
+  cause_code: "cause",
+  cancel_reason_code: "motif d'annulation",
+  month: "mois",
 };
 // Valeurs codees traduites, par champ.
 const VALUES: Record<string, Record<string, string>> = {

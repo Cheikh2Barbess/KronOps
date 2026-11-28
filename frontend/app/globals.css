@@ -959,3 +959,55 @@ th[aria-sort="descending"] .sort-btn .icon {
   border-color: var(--line);
   color: var(--text);
 }
+
+/* Onglets du plein ecran : Jour, Semaine, Mois, Saison. Le choix actif est en gras, souligne et en couleur. */
+.detail-tabs {
+  margin: 0 0 16px;
+}
+
+.tab-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0 0 14px;
+  padding: 4px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  width: fit-content;
+  max-width: 100%;
+}
+
+.tab {
+  min-height: 36px;
+  padding: 6px 16px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-2);
+  font-weight: 550;
+  box-shadow: none;
+}
+
+.tab.active {
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
+
+/* Arrets de ligne : un arret en cours se voit tout de suite (icone et mot, pas seulement la couleur). */
+.stop-card {
+  display: grid;
+  gap: 4px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.target-grid input {
+  width: 6.5em;
+  text-align: right;
+}

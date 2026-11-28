@@ -69,6 +69,7 @@ const NAV: NavItem[] = [
   { href: "/tracabilite", icon: "scan-search", label: "Traçabilité", hint: "Recherche amont et aval", roles: ["admin", "qualite", "production", "lecture"] },
   { href: "/receptions", icon: "truck", label: "Réceptions", hint: "Enregistrer une livraison", roles: ["admin", "qualite", "production", "operateur"] },
   { href: "/production", icon: "factory", label: "Production", hint: "Déclarer une étape (mûrissement, séchage, cartons, palette)", roles: ["admin", "production", "operateur"] },
+  { href: "/arrets", icon: "circle-pause", label: "Arrêts de ligne", hint: "Séchoir ou ligne à l'arrêt : cause, durée, planifié ou non" },
   { href: "/transferts", icon: "arrow-left-right", label: "Transferts", hint: "Envoyer un lot vers une autre usine", roles: ["admin", "production", "operateur"], module: "transfert" },
   { href: "/qualite", icon: "clipboard-check", label: "Contrôle qualité", hint: "Contrôle qualité d'un lot", roles: ["admin", "qualite"] },
   { href: "/expeditions", icon: "ship", label: "Expéditions", hint: "Conteneur, plomb, certificat d'inspection", roles: ["admin", "production"], module: "expedition" },

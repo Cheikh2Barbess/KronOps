@@ -1,4 +1,5 @@
 from django.db import models
+from django.db.models import Q
 
 from core.models import TenantModel
 from dashboard.indicators import THRESHOLDS
@@ -17,3 +18,21 @@ class DashboardThreshold(TenantModel):
 
     def __str__(self):
         return self.code
+
+
+class ProductionTarget(TenantModel):
+    """Cible de production d'un article pour un mois (Sollwert), en unite de base. Saisie par l'Admin.
+
+    Le reel (Istwert) vient des declarations d'etape qui produisent cet article, hors declarations annulees.
+    """
+
+    article = models.ForeignKey("catalog.Article", on_delete=models.PROTECT, related_name="+")
+    month = models.DateField("mois (premier jour)")
+    quantity = models.DecimalField("cible", max_digits=18, decimal_places=3)
+
+    class Meta:
+        verbose_name = "cible de production"
+        constraints = [
+            models.UniqueConstraint(fields=["tenant", "article", "month"], name="productiontarget_unique_month"),
+            models.CheckConstraint(condition=Q(quantity__gt=0), name="productiontarget_positive"),
+        ]

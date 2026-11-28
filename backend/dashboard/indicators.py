@@ -56,6 +56,15 @@ THRESHOLDS = {
         "label": "Jours restants avant la DLC ou la DDM", "unit": "j", "direction": HIGHER, "green": "30", "red": "0",
         "help": "Un lot en stock passe en jaune sous le seuil vert, en rouge quand sa date est dépassée.",
     },
+    "target_attainment_pct": {
+        "label": "Atteinte de la cible de production", "unit": "%", "direction": HIGHER, "green": "95", "red": "80",
+        "help": "Réel divisé par la cible à date (cible du mois répartie sur ses jours), produit par produit.",
+    },
+    "unplanned_stop_hours_week": {
+        "label": "Arrêts non planifiés par semaine", "unit": "h", "direction": LOWER,
+        "green": "2", "red": "6",
+        "help": "Heures d'arrêt non planifié (panne, coupure, manque), tous équipements confondus, par semaine en moyenne sur la période.",
+    },
 }
 
 
