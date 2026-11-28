@@ -1,16 +1,21 @@
 "use client";
 
-// Accueil. Connecte : la zone de droite reste vide, le menu de gauche ouvre les ecrans.
-// Plus tard, un tableau de bord s'ouvrira ici par defaut.
+// Accueil. Connecte : on ouvre le tableau de bord (ecran par defaut, contenu selon le role).
 // Pas connecte : formulaire de connexion. Il ne s'affiche qu'une fois la session verifiee,
 // pour ne pas le montrer a un utilisateur deja connecte.
-import { FormEvent, useState } from "react";
+import { useRouter } from "next/navigation";
+import { FormEvent, useEffect, useState } from "react";
 import { Me, useSession } from "@/components/AppShell";
 import { api, ApiError } from "@/lib/api";
 
 export default function Home() {
   const { me, setMe } = useSession();
   const [error, setError] = useState<string | null>(null);
+  const router = useRouter();
+
+  useEffect(() => {
+    if (me) router.replace("/dashboard");
+  }, [me, router]);
 
   async function onLogin(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();

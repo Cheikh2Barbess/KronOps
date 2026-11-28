@@ -62,7 +62,9 @@ def test_recall_from_the_container(demo):
 
 
 def test_drying_ratio_follows_public_reference_and_one_deviation_is_flagged(demo):
-    data = client_for(demo).get("/api/v1/production/balance/", {"step": "sechage"}).json()
+    # Lots du 12 au 20 juin (l'historique de saison du tableau de bord est a d'autres dates).
+    data = client_for(demo).get("/api/v1/production/balance/", {"step": "sechage", "date_from": "2026-06-12",
+                                                                  "date_to": "2026-06-20"}).json()
     mango = {r["equipment_code"]: r for r in data["runs"] if r["output_article_code"] == "MGAS"}
     assert mango["SEC-N1"]["yield_status"] == "conforme"
     # 13 kg de mangue pour 1 kg sechee (COLEAD 2023, Kent et Amelie).
@@ -132,8 +134,8 @@ def test_coconut_flow_is_traced_from_the_container_to_the_parcel(demo):
 
 def test_pineapple_is_peeled_before_drying(demo):
     with tenant_context(demo.tenant_id):
-        dried = Lot.objects.select_related("production_run").get(article__code="ANAS")
-        peeled = Lot.objects.select_related("production_run").get(article__code="ANAP")
+        dried = Lot.objects.select_related("production_run").get(article__code="ANAS", block_code="autre")
+        peeled = Lot.objects.select_related("production_run").get(pk=dried.parent_links.get().parent_lot_id)
         assert peeled.production_run.step == "epluchage_decoupe"
         assert dried.production_run.step == "sechage"
         assert dried.parent_links.get().parent_lot_id == peeled.id
@@ -228,6 +230,31 @@ def test_demo_shows_a_cancelled_run_and_a_transfer(demo):
         assert cancelled.run.step == "murissement" and cancelled.run.output_lot.status == Lot.Status.BLOQUE
         transfer = LotTransfer.objects.select_related("to_site").get()
         assert transfer.to_site.name == "Usine Sud (démo)" and transfer.lot_id != transfer.source_lot_id
-    balance = client_for(demo).get("/api/v1/production/balance/").json()
+    balance = client_for(demo).get("/api/v1/production/balance/", {"date_from": "2026-06-09",
+                                                                    "date_to": "2026-06-20"}).json()
     ripening = next(t for t in balance["totals"] if t["step"] == "murissement")
     assert ripening["runs"] == 2 and ripening["deviations"] == 0
+
+
+def test_dashboards_tell_the_dried_fruit_story(demo):
+    """Historique de saison FICTIF : mangue, ananas et coco, avec un goulot au sechage et des alertes reelles."""
+    def tiles(username):
+        data = client_for(find_user_by_username(username)).get("/api/v1/dashboard/").json()
+        return {t["code"]: t for t in data["tiles"]}
+
+    boss = tiles("demo.direction")
+    assert not any(t["empty"] for t in boss.values())
+    names = str(boss["produced"]["subtitle"])
+    assert "Mangue" in names and "Ananas" in names and "Coco" in names
+    assert boss["bottleneck"]["status"] == "warn" and "Séchage" in boss["bottleneck"]["value_label"]
+    assert boss["shipped"]["status"] == "warn"  # une expedition sans connaissement
+    assert boss["blocked"]["value"] == 2
+    curves = [d for d in boss["yields"]["detail"] if d["kind"] == "line"]
+    assert len(curves) == 3  # une courbe par produit seche
+    mango = next(c["series"][0] for c in curves if c["series"][0]["name"].startswith("Mangue"))
+    assert mango["band"] == {"min": 5.5, "max": 7.7}
+    assert len([p for p in mango["points"] if p["y"] is not None]) >= 4
+    quality = tiles("demo.qualite")
+    assert quality["ready_without_qc"]["value"] == 1 and quality["qc"]["status"] == "ok"
+    operator = tiles("demo.reception")
+    assert operator["wip"]["value"] >= 1

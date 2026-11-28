@@ -5,6 +5,7 @@
 import { FormEvent, useCallback, useEffect, useState } from "react";
 import { LateEntry, ORGANIC, Option, OrganicBadge, errorText, day, lateFields, withUnit } from "@/components/Codes";
 import { api } from "@/lib/api";
+import { StatusBadge, shipmentDocs } from "@/components/Status";
 
 type Conversion = { unit_name: string; factor: string };
 type Lot = {
@@ -250,6 +251,10 @@ export default function Expeditions() {
                   {s.seal_number ? ` · plomb ${s.seal_number}` : ""}
                 </td>
                 <td>
+                  {(() => {
+                    const d = shipmentDocs(s, s.lines.some((l) => l.organic_status === "bio" || l.organic_status === "conversion"));
+                    return <StatusBadge status={d.status} text={d.text} />;
+                  })()}
                   {s.export_document_ref && <div>COI {s.export_document_ref}</div>}
                   {s.bill_of_lading && <div>BL {s.bill_of_lading}</div>}
                 </td>

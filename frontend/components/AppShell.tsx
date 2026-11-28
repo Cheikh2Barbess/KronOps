@@ -41,9 +41,9 @@ const ROLE_LABELS: Record<string, string> = {
 type NavItem = { href: string; label: string; hint: string; roles?: string[]; module?: string };
 
 // L'ordre suit le parcours du produit. Les roles reprennent ceux de l'ancien accueil, sans changement.
-// Emplacement prevu : une entree « Tableau de bord » (href "/dashboard") viendra en tete de liste
-// et deviendra l'ecran ouvert par defaut a la connexion. Elle n'existe pas encore.
+// « Tableau de bord » vient en tete : c'est l'ecran ouvert par defaut a la connexion (contenu selon le role).
 const NAV: NavItem[] = [
+  { href: "/dashboard", label: "Tableau de bord", hint: "Indicateurs de votre rôle, en vert, jaune ou rouge" },
   { href: "/referentiels", label: "Référentiels", hint: "Articles, fournisseurs, clients, parcelles, sites et équipements" },
   { href: "/pipeline", label: "Pipeline", hint: "Les 8 blocs, du producteur au conteneur" },
   { href: "/tracabilite", label: "Traçabilité", hint: "Recherche amont et aval", roles: ["admin", "qualite", "production", "lecture"] },
