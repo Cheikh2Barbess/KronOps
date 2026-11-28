@@ -4,7 +4,7 @@
 // 1. Contenu : parcelles, producteurs, etapes. 2. Perimetre prudent : tout ce qui vient des memes matieres.
 // 3. Ou c'est : stock a bloquer, expeditions (client, conteneur, plomb, certificat d'inspection).
 import { FormEvent, useState } from "react";
-import { Menu, OrganicBadge, day, errorText, when, withUnit } from "@/components/Codes";
+import { OrganicBadge, day, errorText, when, withUnit } from "@/components/Codes";
 import { Run, YieldCell } from "@/components/Runs";
 import { api, ApiError } from "@/lib/api";
 
@@ -131,9 +131,6 @@ export default function Rappel() {
   const packaging = report?.roots.filter((r) => r.article_type === "emballage") || [];
   return (
     <main>
-      <div className="no-print">
-        <Menu />
-      </div>
       <h1>Rapport de rappel</h1>
       <form onSubmit={onSearch} className="no-print" style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
         <input name="search" required placeholder="Code du carton, de la palette, ou n° de conteneur" style={{ minWidth: 340, fontSize: "1.1em" }} />

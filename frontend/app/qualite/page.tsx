@@ -3,7 +3,7 @@
 // Controle qualite d'un lot (vrac seche, cartons) avant expedition. Chaque critere se coche conforme ou
 // non conforme : pas de texte libre. Un critere non conforme bloque le lot automatiquement.
 import { FormEvent, useCallback, useEffect, useState } from "react";
-import { LateEntry, Menu, Option, OrganicBadge, errorText, lateFields, when, withUnit } from "@/components/Codes";
+import { LateEntry, Option, OrganicBadge, errorText, lateFields, when, withUnit } from "@/components/Codes";
 import { api } from "@/lib/api";
 
 type Lot = {
@@ -77,7 +77,6 @@ export default function Qualite() {
 
   return (
     <main>
-      <Menu />
       <h1>Contrôle qualité</h1>
       <p>Contrôlez le vrac séché ou les cartons avant l&apos;expédition. Un seul critère non conforme bloque le lot.</p>
       {message && <p style={{ background: "#e8f5e9", padding: 8, fontSize: "1.1em" }}>{message}</p>}

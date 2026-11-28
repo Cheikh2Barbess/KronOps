@@ -3,7 +3,7 @@
 // Transfert d'un lot d'une usine a une autre. Tout le lot : il garde son code. Une partie : un nouveau lot nait a
 // l'usine d'arrivee (le numero a ecrire sur l'etiquette s'affiche), relie au lot d'origine pour le rappel.
 import { FormEvent, useCallback, useEffect, useState } from "react";
-import { LateEntry, LateFlag, Menu, Option, OrganicBadge, errorText, lateFields, when, withUnit } from "@/components/Codes";
+import { LateEntry, LateFlag, Option, OrganicBadge, errorText, lateFields, when, withUnit } from "@/components/Codes";
 import { api } from "@/lib/api";
 
 type Me = { username: string; role: string };
@@ -92,7 +92,6 @@ export default function Transferts() {
 
   return (
     <main>
-      <Menu />
       <h1>Transferts entre usines</h1>
       <p>
         Un lot se consomme et s&apos;expédie depuis l&apos;usine où il se trouve. Pour l&apos;utiliser ailleurs, transférez-le. Le statut

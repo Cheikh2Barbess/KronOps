@@ -358,9 +358,6 @@ export default function Validations() {
 
   return (
     <main>
-      <p>
-        <a href="/">Accueil</a>
-      </p>
       <h1>Validations</h1>
       <p>
         Déblocage, destruction, rebut et ajustement de stock demandent l&apos;accord de deux personnes : l&apos;une demande, une

@@ -3,7 +3,7 @@
 // Expedition : un depart vers un client (souvent un conteneur). On choisit les palettes ou cartons,
 // la quantite (en cartons ou en kg), le conteneur, le plomb et le certificat d'inspection (COI TRACES).
 import { FormEvent, useCallback, useEffect, useState } from "react";
-import { LateEntry, Menu, ORGANIC, Option, OrganicBadge, errorText, day, lateFields, withUnit } from "@/components/Codes";
+import { LateEntry, ORGANIC, Option, OrganicBadge, errorText, day, lateFields, withUnit } from "@/components/Codes";
 import { api } from "@/lib/api";
 
 type Conversion = { unit_name: string; factor: string };
@@ -91,7 +91,6 @@ export default function Expeditions() {
 
   return (
     <main>
-      <Menu />
       <h1>Expéditions</h1>
       {message && <p style={{ background: "#e8f5e9", padding: 8, fontSize: "1.1em" }}>{message}</p>}
       {error && <p role="alert">{error}</p>}

@@ -9,7 +9,6 @@ import {
   CodePicker,
   LateEntry,
   LateFlag,
-  Menu,
   ORGANIC,
   Option,
   OrganicBadge,
@@ -454,7 +453,6 @@ export default function Production() {
 
   return (
     <main>
-      <Menu />
       <h1>Production : déclarer une étape</h1>
       <p>
         Déclarez chaque étape au moment où elle se termine : l&apos;heure est prise automatiquement. Tracalys crée le lot produit,

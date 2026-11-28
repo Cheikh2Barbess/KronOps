@@ -380,9 +380,6 @@ export default function Journal() {
 
   return (
     <main>
-      <p>
-        <a href="/">Accueil</a>
-      </p>
       <h1>Journal d&apos;audit</h1>
       <form onSubmit={onFilter} style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 12 }}>
         <select name="entity_type" defaultValue="">
